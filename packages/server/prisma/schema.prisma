@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Admin {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Bot {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  name      String
+  username  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  inviteLinks InviteLink[]
+  fileIds     BotFileId[]
+  botUsers    BotUser[]
+}
+
+model InviteLink {
+  id        Int      @id @default(autoincrement())
+  botId     Int
+  code      String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  bot             Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
+  contentBindings ContentBinding[]
+  adBindings      AdBinding[]
+  botUsers        BotUser[]
+
+  @@unique([botId, code])
+}
+
+model ResourceGroup {
+  id        Int        @id @default(autoincrement())
+  name      String
+  sortOrder Int        @default(0)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  resources Resource[]
+}
+
+model Resource {
+  id        Int      @id @default(autoincrement())
+  groupId   Int?
+  type      String
+  caption   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  group           ResourceGroup?   @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  mediaFiles      MediaFile[]
+  contentBindings ContentBinding[]
+  adBindings      AdBinding[]
+}
+
+model MediaFile {
+  id            Int      @id @default(autoincrement())
+  resourceId    Int
+  type          String
+  filePath      String
+  fileName      String
+  mimeType      String
+  fileSize      Int
+  duration      Int?
+  width         Int?
+  height        Int?
+  thumbnailPath String?
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  botFileIds BotFileId[]
+}
+
+model BotFileId {
+  id          Int    @id @default(autoincrement())
+  botId       Int
+  mediaFileId Int
+  fileId      String
+
+  bot       Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  mediaFile MediaFile @relation(fields: [mediaFileId], references: [id], onDelete: Cascade)
+
+  @@unique([botId, mediaFileId])
+}
+
+model ContentBinding {
+  id           Int @id @default(autoincrement())
+  inviteLinkId Int
+  resourceId   Int
+  sortOrder    Int @default(0)
+
+  inviteLink InviteLink @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
+  resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+}
+
+model AdBinding {
+  id           Int    @id @default(autoincrement())
+  inviteLinkId Int
+  resourceId   Int
+  sortOrder    Int    @default(0)
+  buttons      Json?
+
+  inviteLink InviteLink @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
+  resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Restrict)
+}
+
+model BotUser {
+  id           Int      @id @default(autoincrement())
+  telegramId   BigInt
+  botId        Int
+  inviteLinkId Int
+  firstName    String?
+  lastName     String?
+  username     String?
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+
+  bot        Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
+  inviteLink InviteLink   @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
+  sessions   UserSession[]
+
+  @@unique([telegramId, botId])
+}
+
+model UserSession {
+  id           Int      @id @default(autoincrement())
+  botUserId    Int
+  currentIndex Int      @default(0)
+  isCompleted  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  botUser BotUser @relation(fields: [botUserId], references: [id], onDelete: Cascade)
+}
+
+model AdImpression {
+  id           Int      @id @default(autoincrement())
+  botId        Int
+  inviteLinkId Int
+  adBindingId  Int
+  telegramId   BigInt
+  viewedAt     DateTime @default(now())
+}
+
+model SystemSetting {
+  id    Int    @id @default(autoincrement())
+  key   String @unique
+  value Json
+}
