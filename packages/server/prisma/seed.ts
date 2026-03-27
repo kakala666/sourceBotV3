@@ -24,6 +24,8 @@ async function main() {
     { key: 'endContent', value: { text: '预览已结束，感谢观看！', buttons: [] } },
     { key: 'adDisplaySeconds', value: 5 },
     { key: 'statsGroupId', value: '' },
+    { key: 'centralAuthEnabled', value: false },
+    { key: 'verifyCodeEnabled', value: false },
   ];
 
   for (const setting of settings) {

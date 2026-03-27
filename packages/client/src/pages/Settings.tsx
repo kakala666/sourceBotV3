@@ -105,6 +105,26 @@ export default function Settings() {
             <Input placeholder="Telegram 群组 ID（可选）" style={{ width: 300 }} />
           </Form.Item>
 
+          <Divider>登录验证设置</Divider>
+
+          <Form.Item
+            label="启用中央身份验证"
+            name="centralAuthEnabled"
+            valuePropName="checked"
+            extra="启用后，登录时需要通过中央身份验证服务验证 Telegram ID"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="启用验证码认证"
+            name="verifyCodeEnabled"
+            valuePropName="checked"
+            extra="启用后，登录时需要通过 @ShenFenJiaoYanbot 进行验证码本人认证"
+          >
+            <Switch />
+          </Form.Item>
+
           <Divider>自动回复广告</Divider>
 
           <Form.Item

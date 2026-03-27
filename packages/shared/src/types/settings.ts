@@ -13,4 +13,6 @@ export interface SystemSettings {
   adDisplaySeconds: number;
   statsGroupId: string;
   autoReplyAd: AutoReplyAdConfig;
+  centralAuthEnabled: boolean;
+  verifyCodeEnabled: boolean;
 }

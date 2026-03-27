@@ -1,12 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { AdminInfo, LoginInput, LoginResponse, ApiResponse } from 'shared';
-import api from '@/services/api';
+import type { AdminInfo } from 'shared';
 
 interface AuthState {
   token: string | null;
   admin: AdminInfo | null;
-  login: (input: LoginInput) => Promise<void>;
+  setAuth: (token: string, admin: AdminInfo) => void;
   logout: () => void;
 }
 
@@ -16,14 +15,9 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       admin: null,
 
-      login: async (input: LoginInput) => {
-        const { data } = await api.post<ApiResponse<LoginResponse>>(
-          '/auth/login',
-          input,
-        );
-        const result = data.data!;
-        localStorage.setItem('token', result.token);
-        set({ token: result.token, admin: result.admin });
+      setAuth: (token: string, admin: AdminInfo) => {
+        localStorage.setItem('token', token);
+        set({ token, admin });
       },
 
       logout: () => {
