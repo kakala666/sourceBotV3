@@ -5,32 +5,23 @@ import { BCRYPT_SALT_ROUNDS } from 'shared';
 const prisma = new PrismaClient();
 
 async function main() {
-  const existing = await prisma.admin.findUnique({
-    where: { username: 'admin' },
-  });
-
-  if (existing) {
-    console.log('管理员账号已存在，跳过创建');
-    return;
-  }
-
   const hashedPassword = await bcrypt.hash('admin123', BCRYPT_SALT_ROUNDS);
 
-  await prisma.admin.create({
-    data: {
+  await prisma.admin.upsert({
+    where: { username: 'admin' },
+    update: { canManageAccounts: true, name: '超级管理员' },
+    create: {
+      name: '超级管理员',
       username: 'admin',
       password: hashedPassword,
+      canManageAccounts: true,
     },
   });
 
-  console.log('默认管理员账号创建成功：admin / admin123');
+  console.log('默认管理员账号已就绪：admin / admin123（首次创建时）');
 
-  // 初始化系统设置
   const settings = [
-    {
-      key: 'endContent',
-      value: { text: '预览已结束，感谢观看！', buttons: [] },
-    },
+    { key: 'endContent', value: { text: '预览已结束，感谢观看！', buttons: [] } },
     { key: 'adDisplaySeconds', value: 5 },
     { key: 'statsGroupId', value: '' },
   ];

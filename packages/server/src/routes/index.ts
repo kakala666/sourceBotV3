@@ -9,6 +9,7 @@ import adsRouter from './ads';
 import usersRouter from './users';
 import statsRouter from './stats';
 import settingsRouter from './settings';
+import adminsRouter from './admins';
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use('/links', adsRouter);
 router.use('/users', usersRouter);
 router.use('/stats', statsRouter);
 router.use('/settings', settingsRouter);
+router.use('/admins', adminsRouter);
 
 export default router;

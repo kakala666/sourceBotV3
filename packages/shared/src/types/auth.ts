@@ -6,13 +6,13 @@ export interface LoginInput {
 
 export interface LoginResponse {
   token: string;
-  admin: {
-    id: number;
-    username: string;
-  };
+  admin: AdminInfo;
 }
 
 export interface AdminInfo {
   id: number;
+  name: string;
   username: string;
+  telegramId: string | null;
+  canManageAccounts: boolean;
 }

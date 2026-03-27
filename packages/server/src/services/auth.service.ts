@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from './prisma';
-import { JWT_EXPIRES_IN, BCRYPT_SALT_ROUNDS } from 'shared';
+import { JWT_EXPIRES_IN } from 'shared';
 
 export class AuthService {
   static async login(username: string, password: string) {
@@ -20,15 +20,26 @@ export class AuthService {
 
     return {
       token,
-      admin: { id: admin.id, username: admin.username },
+      admin: {
+        id: admin.id,
+        name: admin.name,
+        username: admin.username,
+        telegramId: admin.telegramId,
+        canManageAccounts: admin.canManageAccounts,
+      },
     };
   }
 
   static async getMe(adminId: number) {
-    const admin = await prisma.admin.findUnique({
+    return prisma.admin.findUnique({
       where: { id: adminId },
-      select: { id: true, username: true },
+      select: {
+        id: true,
+        name: true,
+        username: true,
+        telegramId: true,
+        canManageAccounts: true,
+      },
     });
-    return admin;
   }
 }

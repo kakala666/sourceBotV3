@@ -12,20 +12,11 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  UserSwitchOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/stores/auth';
 
 const { Header, Sider, Content } = AntLayout;
-
-const menuItems = [
-  { key: '/bots', icon: <RobotOutlined />, label: '机器人管理' },
-  { key: '/resources', icon: <FileImageOutlined />, label: '资源管理' },
-  { key: '/contents', icon: <AppstoreOutlined />, label: '内容配置' },
-  { key: '/ads', icon: <NotificationOutlined />, label: '广告配置' },
-  { key: '/users', icon: <TeamOutlined />, label: '用户列表' },
-  { key: '/stats', icon: <BarChartOutlined />, label: '统计报表' },
-  { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
-];
 
 export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -33,6 +24,19 @@ export default function Layout() {
   const location = useLocation();
   const { admin, logout } = useAuthStore();
   const { token: { colorBgContainer, borderRadiusLG } } = theme.useToken();
+
+  const menuItems = [
+    { key: '/bots', icon: <RobotOutlined />, label: '机器人管理' },
+    { key: '/resources', icon: <FileImageOutlined />, label: '资源管理' },
+    { key: '/contents', icon: <AppstoreOutlined />, label: '内容配置' },
+    { key: '/ads', icon: <NotificationOutlined />, label: '广告配置' },
+    { key: '/users', icon: <TeamOutlined />, label: '用户列表' },
+    { key: '/stats', icon: <BarChartOutlined />, label: '统计报表' },
+    { key: '/settings', icon: <SettingOutlined />, label: '系统设置' },
+    ...(admin?.canManageAccounts
+      ? [{ key: '/admins', icon: <UserSwitchOutlined />, label: '账号管理' }]
+      : []),
+  ];
 
   const handleLogout = () => {
     logout();
@@ -101,7 +105,7 @@ export default function Layout() {
             >
               不会用就先看我
             </a>
-            <span>管理员：{admin?.username}</span>
+            <span>管理员：{admin?.name || admin?.username}</span>
             <Button
               type="text"
               icon={<LogoutOutlined />}
