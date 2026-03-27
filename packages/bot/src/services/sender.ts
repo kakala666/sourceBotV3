@@ -219,6 +219,36 @@ function buildPageKeyboard(sessionId: number, nextIndex: number): InlineKeyboard
 }
 
 /**
+ * 构建内容键盘（内容按钮 + 可选翻页按钮）
+ */
+function buildContentKeyboard(
+  contentButtons?: { text: string; url: string }[] | null,
+  sessionId?: number,
+  nextIndex?: number,
+): InlineKeyboard | undefined {
+  const hasContentBtns = contentButtons && contentButtons.length > 0;
+  const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
+
+  if (!hasContentBtns && !hasPageBtn) return undefined;
+
+  const keyboard = new InlineKeyboard();
+
+  // 内容按钮在上方
+  if (hasContentBtns) {
+    for (const btn of contentButtons) {
+      keyboard.url(btn.text, btn.url).row();
+    }
+  }
+
+  // 翻页按钮在下方
+  if (hasPageBtn) {
+    keyboard.text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
+  }
+
+  return keyboard;
+}
+
+/**
  * 发送资源（根据类型自动选择发送方式）
  */
 export async function sendResource(
@@ -308,4 +338,4 @@ export async function sendEndContent(
   await ctx.reply(endContent.text, keyboard ? { reply_markup: keyboard } : undefined);
 }
 
-export { buildPageKeyboard };
+export { buildPageKeyboard, buildContentKeyboard };

@@ -11,6 +11,7 @@ import Users from '@/pages/Users';
 import Stats from '@/pages/Stats';
 import Settings from '@/pages/Settings';
 import Manual from '@/pages/Manual';
+import SmartQuestion from '@/pages/SmartQuestion';
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -38,6 +39,7 @@ const router = createBrowserRouter([
       { path: 'stats', element: <Stats /> },
       { path: 'settings', element: <Settings /> },
       { path: 'manual', element: <Manual /> },
+      { path: 'smart-question', element: <SmartQuestion /> },
     ],
   },
 ]);

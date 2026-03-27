@@ -2,7 +2,7 @@ import type { Context } from 'grammy';
 import prisma from '../prisma';
 import { getActiveSession, advanceSession, completeSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent } from '../services/content';
-import { sendResource, sendAd, sendEndContent, buildPageKeyboard } from '../services/sender';
+import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -116,9 +116,11 @@ async function processNextPage(
   const isLast = nextIndex >= totalContent - 1;
 
   if (isLast) {
-    // 最后一条资源，不带翻页按钮
+    // 最后一条资源，不带翻页按钮，但可能有内容按钮
+    const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+    const keyboard = buildContentKeyboard(contentButtons);
     try {
-      await sendResource(ctx, botId, binding.resource);
+      await sendResource(ctx, botId, binding.resource, keyboard);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -129,12 +131,14 @@ async function processNextPage(
     await sendEndContent(ctx, endContent);
   } else {
     // 还有更多资源，带翻页按钮
-    const keyboard = buildPageKeyboard(sessionId, nextIndex + 1);
+    const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1);
     try {
       await sendResource(ctx, botId, binding.resource, keyboard);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
-      await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: keyboard });
+      const fallbackKb = buildPageKeyboard(sessionId, nextIndex + 1);
+      await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
     }
   }
 }

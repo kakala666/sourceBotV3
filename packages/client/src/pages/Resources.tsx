@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Card, Button, List, Input, Space, message, Modal, Form, Select, Upload,
-  Tag, Popconfirm, Typography, Pagination, Empty,
+  Button, List, Input, Space, message, Modal, Form, Select, Upload,
+  Tag, Popconfirm, Typography, Table, Progress,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined,
@@ -34,6 +34,8 @@ export default function Resources() {
   // 上传状态
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadForm] = Form.useForm();
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -128,15 +130,32 @@ export default function Resources() {
       fileList.forEach((f: { originFileObj: File }) => {
         formData.append('files', f.originFileObj);
       });
+      setUploading(true);
+      setUploadProgress(0);
       await api.post('/resources', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 300000,
+        onUploadProgress: (e) => {
+          if (e.total) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        },
       });
       message.success('上传成功');
       setUploadModalOpen(false);
       uploadForm.resetFields();
       fetchResources();
-    } catch {
-      message.error('上传失败');
+    } catch (err: any) {
+      if (err.code === 'ECONNABORTED') {
+        message.error('上传超时，请检查网络或减小文件大小');
+      } else if (err.response?.data?.message) {
+        message.error(err.response.data.message);
+      } else {
+        message.error('上传失败');
+      }
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
     }
   };
 
@@ -207,39 +226,61 @@ export default function Resources() {
             </Button>
           </Space>
 
-          {resources.length === 0 && !resourceLoading ? (
-            <Empty description="暂无资源" />
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
-              {resources.map((res) => (
-                <Card
-                  key={res.id}
-                  size="small"
-                  loading={resourceLoading}
-                  actions={[
-                    <Popconfirm key="del" title="确定删除？" onConfirm={() => handleDeleteResource(res.id)}>
-                      <DeleteOutlined />
-                    </Popconfirm>,
-                  ]}
-                >
-                  <div style={{ textAlign: 'center', fontSize: 32, padding: '12px 0', color: '#999' }}>
-                    {typeIcon(res.type)}
-                  </div>
-                  <Card.Meta
-                    title={<Tag color={typeColor(res.type)}>{res.type}</Tag>}
-                    description={res.caption || '无描述'}
-                  />
-                  {res.group && (
-                    <Tag style={{ marginTop: 8 }}>{res.group.name}</Tag>
-                  )}
-                </Card>
-              ))}
-            </div>
-          )}
-
-          <div style={{ marginTop: 16, textAlign: 'right' }}>
-            <Pagination current={page} total={total} pageSize={12} onChange={setPage} showTotal={(t) => `共 ${t} 条`} />
-          </div>
+          <Table
+              rowKey="id"
+              size="small"
+              loading={resourceLoading}
+              dataSource={resources}
+              pagination={{
+                current: page,
+                total,
+                pageSize: 12,
+                onChange: setPage,
+                showTotal: (t) => `共 ${t} 条`,
+              }}
+              columns={[
+                {
+                  title: 'ID',
+                  dataIndex: 'id',
+                  width: 60,
+                },
+                {
+                  title: '类型',
+                  dataIndex: 'type',
+                  width: 100,
+                  render: (type: ResourceType) => (
+                    <Tag icon={typeIcon(type)} color={typeColor(type)}>{type}</Tag>
+                  ),
+                },
+                {
+                  title: '描述',
+                  dataIndex: 'caption',
+                  ellipsis: true,
+                  render: (text: string) => text || <span style={{ color: '#999' }}>无描述</span>,
+                },
+                {
+                  title: '分组',
+                  dataIndex: 'group',
+                  width: 120,
+                  render: (group: ResourceGroupInfo | null) => group ? <Tag>{group.name}</Tag> : '-',
+                },
+                {
+                  title: '文件数',
+                  dataIndex: 'mediaFiles',
+                  width: 80,
+                  render: (files: unknown[]) => files?.length || 0,
+                },
+                {
+                  title: '操作',
+                  width: 80,
+                  render: (_: unknown, record: ResourceInfo) => (
+                    <Popconfirm title="确定删除？" onConfirm={() => handleDeleteResource(record.id)}>
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  ),
+                },
+              ]}
+            />
         </div>
       </div>
 
@@ -263,30 +304,35 @@ export default function Resources() {
         title="上传资源"
         open={uploadModalOpen}
         onOk={handleUpload}
-        onCancel={() => { setUploadModalOpen(false); uploadForm.resetFields(); }}
+        onCancel={() => { if (!uploading) { setUploadModalOpen(false); uploadForm.resetFields(); } }}
         destroyOnClose
+        okButtonProps={{ loading: uploading, disabled: uploading }}
+        cancelButtonProps={{ disabled: uploading }}
       >
         <Form form={uploadForm} layout="vertical">
           <Form.Item name="type" label="资源类型" rules={[{ required: true, message: '请选择类型' }]}>
-            <Select placeholder="选择类型" options={[
+            <Select placeholder="选择类型" disabled={uploading} options={[
               { label: '图片', value: 'photo' },
               { label: '视频', value: 'video' },
               { label: '媒体组', value: 'media_group' },
             ]} />
           </Form.Item>
           <Form.Item name="groupId" label="所属分组">
-            <Select placeholder="选择分组（可选）" allowClear
+            <Select placeholder="选择分组（可选）" allowClear disabled={uploading}
               options={groups.map((g) => ({ label: g.name, value: g.id }))} />
           </Form.Item>
           <Form.Item name="caption" label="描述">
-            <Input.TextArea placeholder="资源描述（可选）" rows={2} />
+            <Input.TextArea placeholder="资源描述（可选）" rows={2} disabled={uploading} />
           </Form.Item>
           <Form.Item name="files" label="文件" rules={[{ required: true, message: '请选择文件' }]}>
-            <Upload multiple beforeUpload={() => false} accept="image/*,video/*">
-              <Button icon={<UploadOutlined />}>选择文件</Button>
+            <Upload multiple beforeUpload={() => false} accept="image/*,video/*" disabled={uploading}>
+              <Button icon={<UploadOutlined />} disabled={uploading}>选择文件</Button>
             </Upload>
           </Form.Item>
         </Form>
+        {uploadProgress !== null && (
+          <Progress percent={uploadProgress} status={uploading ? 'active' : 'success'} />
+        )}
       </Modal>
     </>
   );

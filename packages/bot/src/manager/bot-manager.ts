@@ -3,6 +3,7 @@ import prisma from '../prisma';
 import { handleStart } from '../handlers/start';
 import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
+import { handleAutoReply } from '../handlers/auto-reply';
 import fs from 'fs';
 import path from 'path';
 
@@ -134,6 +135,20 @@ export class BotManager {
   }
 
   /**
+   * 获取指定 Bot 的 API 实例（供广播等外部功能使用）
+   */
+  getBotApi(botId: number) {
+    return this.instances.get(botId)?.bot.api;
+  }
+
+  /**
+   * 获取所有运行中的 Bot ID
+   */
+  getActiveBotIds(): number[] {
+    return Array.from(this.instances.keys());
+  }
+
+  /**
    * 重启单个 Bot
    */
   async restartBot(botId: number) {
@@ -162,6 +177,18 @@ export class BotManager {
       } catch (err: any) {
         console.error(`[Bot ${botId}] callback 处理失败:`, err.message);
         await ctx.answerCallbackQuery().catch(() => {});
+      }
+    });
+
+    // 私聊消息自动回复广告
+    bot.on('message', async (ctx, next) => {
+      if (ctx.chat?.type !== 'private') {
+        return next();
+      }
+      try {
+        await handleAutoReply(ctx, botId);
+      } catch (err: any) {
+        console.error(`[Bot ${botId}] auto-reply 处理失败:`, err.message);
       }
     });
 

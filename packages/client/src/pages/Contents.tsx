@@ -1,8 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Select, Button, Space, message, Typography, List, Modal, Checkbox, Input, Tag, Empty,
+  Select, Button, Space, message, Typography, List, Modal, Checkbox, Input, Tag, Empty, Collapse,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined, SaveOutlined, HolderOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, SaveOutlined, HolderOutlined, MinusCircleOutlined } from '@ant-design/icons';
 import {
   DndContext, closestCenter, PointerSensor, KeyboardSensor,
   useSensor, useSensors,
@@ -13,12 +13,48 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import type {
-  BotInfo, InviteLinkInfo, ContentBindingInfo, ResourceInfo,
+  BotInfo, InviteLinkInfo, ContentBindingInfo, AdButton, ResourceInfo,
   ResourceGroupInfo, ApiResponse, PaginatedResponse,
 } from 'shared';
 import api from '@/services/api';
 
 const { Title } = Typography;
+
+// 内联按钮编辑器
+function ButtonsEditor({ buttons, onChange }: { buttons: AdButton[]; onChange: (btns: AdButton[]) => void }) {
+  const addButton = () => onChange([...buttons, { text: '', url: '' }]);
+  const removeButton = (idx: number) => onChange(buttons.filter((_, i) => i !== idx));
+  const updateButton = (idx: number, field: keyof AdButton, value: string) => {
+    const next = buttons.map((b, i) => (i === idx ? { ...b, [field]: value } : b));
+    onChange(next);
+  };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 8, color: '#666', fontSize: 13 }}>内联按钮配置：</div>
+      {buttons.map((btn, idx) => (
+        <Space key={idx} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+          <Input
+            placeholder="按钮文字"
+            value={btn.text}
+            onChange={(e) => updateButton(idx, 'text', e.target.value)}
+            style={{ width: 160 }}
+          />
+          <Input
+            placeholder="链接 URL"
+            value={btn.url}
+            onChange={(e) => updateButton(idx, 'url', e.target.value)}
+            style={{ width: 260 }}
+          />
+          <MinusCircleOutlined style={{ color: '#ff4d4f', cursor: 'pointer' }} onClick={() => removeButton(idx)} />
+        </Space>
+      ))}
+      <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={addButton}>
+        添加按钮
+      </Button>
+    </div>
+  );
+}
 
 // 可拖拽排序项组件
 function SortableItem({ id, children }: { id: number; children: React.ReactNode }) {
@@ -124,13 +160,19 @@ export default function Contents() {
     setBindings((prev) => prev.filter((b) => b.id !== id));
   };
 
+  const handleButtonsChange = (bindingId: number, buttons: AdButton[]) => {
+    setBindings((prev) =>
+      prev.map((b) => (b.id === bindingId ? { ...b, buttons } : b)),
+    );
+  };
+
   // 保存
   const handleSave = async () => {
     if (!selectedLinkId) return;
     setSaving(true);
     try {
       await api.put(`/links/${selectedLinkId}/contents`, {
-        items: bindings.map((b, i) => ({ resourceId: b.resourceId, sortOrder: i + 1 })),
+        items: bindings.map((b, i) => ({ resourceId: b.resourceId, sortOrder: i + 1, buttons: b.buttons || [] })),
       });
       message.success('保存成功');
       fetchBindings();
@@ -179,6 +221,7 @@ export default function Contents() {
           inviteLinkId: selectedLinkId!,
           resourceId: rid,
           sortOrder: bindings.length + i + 1,
+          buttons: null,
           resource: res,
         };
       });
@@ -225,16 +268,31 @@ export default function Contents() {
               dataSource={bindings}
               locale={{ emptyText: '暂无内容，点击"添加资源"开始配置' }}
               renderItem={(item, index) => (
-                <List.Item>
+                <List.Item style={{ display: 'block' }}>
                   <SortableItem id={item.id}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-                      <Space>
-                        <Tag>{index + 1}</Tag>
-                        <Tag color="blue">{item.resource?.type || 'unknown'}</Tag>
-                        <span>{item.resource?.caption || `资源 #${item.resourceId}`}</span>
-                      </Space>
-                      <Button size="small" danger icon={<DeleteOutlined />} onClick={() => handleRemove(item.id)} />
-                    </div>
+                    <Collapse
+                      size="small"
+                      items={[{
+                        key: item.id,
+                        label: (
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Space>
+                              <Tag>{index + 1}</Tag>
+                              <Tag color="blue">{item.resource?.type || 'unknown'}</Tag>
+                              <span>{item.resource?.caption || `资源 #${item.resourceId}`}</span>
+                            </Space>
+                            <Button size="small" danger icon={<DeleteOutlined />}
+                              onClick={(e) => { e.stopPropagation(); handleRemove(item.id); }} />
+                          </div>
+                        ),
+                        children: (
+                          <ButtonsEditor
+                            buttons={item.buttons || []}
+                            onChange={(btns) => handleButtonsChange(item.id, btns)}
+                          />
+                        ),
+                      }]}
+                    />
                   </SortableItem>
                 </List.Item>
               )}

@@ -62,3 +62,12 @@ export async function getEndContent(): Promise<{
 export async function getStatsGroupId(): Promise<string> {
   return getSystemSetting<string>('statsGroupId', '');
 }
+
+/**
+ * 获取自动回复文本（未启用或未配置时返回 null）
+ */
+export async function getAutoReplyAd(): Promise<string | null> {
+  const config = await getSystemSetting<any>('autoReplyAd', null);
+  if (!config || !config.enabled || !config.text) return null;
+  return config.text;
+}

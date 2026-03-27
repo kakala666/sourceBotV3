@@ -9,6 +9,7 @@ export interface ContentBindingInfo {
   inviteLinkId: number;
   resourceId: number;
   sortOrder: number;
+  buttons: AdButton[] | null;
   resource?: import('./resource').ResourceInfo;
 }
 
@@ -22,7 +23,11 @@ export interface AdBindingInfo {
 }
 
 export interface ContentBindingBatchInput {
-  items: { resourceId: number; sortOrder: number }[];
+  items: {
+    resourceId: number;
+    sortOrder: number;
+    buttons?: AdButton[];
+  }[];
 }
 
 export interface AdBindingBatchInput {

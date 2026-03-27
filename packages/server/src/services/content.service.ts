@@ -1,4 +1,11 @@
 import prisma from './prisma';
+import type { Prisma } from '@prisma/client';
+import type { AdButton } from 'shared';
+
+function toJsonValue(buttons?: AdButton[] | null): Prisma.InputJsonValue | undefined {
+  if (!buttons || buttons.length === 0) return undefined;
+  return buttons as unknown as Prisma.InputJsonValue;
+}
 
 export class ContentService {
   static async list(inviteLinkId: number) {
@@ -13,7 +20,7 @@ export class ContentService {
     });
   }
 
-  static async batchSet(inviteLinkId: number, items: { resourceId: number; sortOrder: number }[]) {
+  static async batchSet(inviteLinkId: number, items: { resourceId: number; sortOrder: number; buttons?: AdButton[] }[]) {
     await prisma.$transaction([
       prisma.contentBinding.deleteMany({ where: { inviteLinkId } }),
       ...items.map((item) =>
@@ -22,6 +29,7 @@ export class ContentService {
             inviteLinkId,
             resourceId: item.resourceId,
             sortOrder: item.sortOrder,
+            buttons: toJsonValue(item.buttons),
           },
         })
       ),

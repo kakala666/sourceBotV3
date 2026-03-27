@@ -2,7 +2,7 @@ import type { Context } from 'grammy';
 import prisma from '../prisma';
 import { upsertBotUser, resetSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent } from '../services/content';
-import { sendResource, sendAd, sendEndContent, buildPageKeyboard } from '../services/sender';
+import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 
 /**
  * 处理 /start 命令
@@ -67,8 +67,10 @@ async function sendFirstResource(
 
   // 如果只有一条资源，发完即结束
   if (totalContent <= 1) {
+    const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+    const keyboard = buildContentKeyboard(contentButtons);
     try {
-      await sendResource(ctx, botId, binding.resource);
+      await sendResource(ctx, botId, binding.resource, keyboard);
     } catch (err: any) {
       console.error('[start] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -80,12 +82,14 @@ async function sendFirstResource(
   }
 
   // 多条资源，带翻页按钮
-  const keyboard = buildPageKeyboard(sessionId, 1);
+  const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1);
   try {
     await sendResource(ctx, botId, binding.resource, keyboard);
   } catch (err: any) {
     console.error('[start] 发送资源失败:', err.message);
     // 发送失败时仍然提供翻页键盘，让用户可以跳到下一页
-    await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: keyboard });
+    const fallbackKb = buildPageKeyboard(sessionId, 1);
+    await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
   }
 }

@@ -5,6 +5,7 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 import { BotManager } from './manager/bot-manager';
+import { startBroadcastServer } from './broadcast/server';
 
 const manager = new BotManager();
 
@@ -12,6 +13,9 @@ async function main() {
   console.log('[Bot Runner] 启动...');
 
   await manager.start();
+
+  // 启动广播 API 服务
+  startBroadcastServer(manager);
 
   // 优雅退出
   process.once('SIGINT', async () => {

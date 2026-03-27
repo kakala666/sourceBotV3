@@ -90,9 +90,7 @@ export default function Layout() {
           />
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <a
-              href="https://github.com/tvvocold/How-To-Ask-Questions-The-Smart-Way?tab=readme-ov-file"
-              target="_blank"
-              rel="noopener noreferrer"
+              href="/smart-question"
               style={{ color: '#1677ff' }}
             >
               反馈BUG前看我

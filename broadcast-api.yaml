@@ -1,0 +1,337 @@
+openapi: 3.0.3
+info:
+  title: 视频机器人广播 API
+  description: |
+    供总控端调用的广播接口。总控端下载 Telegram 消息内容后，
+    通过此 API 将图片、文字、按钮及发送配置推送给机器人，
+    机器人异步执行广播任务。
+
+    **广播执行逻辑：**
+    1. 解码 base64 图片存为临时文件
+    2. 用 FSInputFile 发送给第 1 个用户，获取 file_id
+    3. 后续用 file_id 发送给剩余用户
+    4. 每发 rate 条暂停 interval 秒
+    5. 达到 max_recipients 或全部发完后结束
+    6. caption 使用 parse_mode=HTML，解析失败自动回退纯文本重发
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: 本地开发
+
+security:
+  - ApiKeyAuth: []
+
+paths:
+  /api/broadcast:
+    post:
+      summary: 创建广播任务
+      operationId: createBroadcast
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BroadcastRequest'
+      responses:
+        '200':
+          description: 任务创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastCreateResponse'
+        '400':
+          description: 请求参数错误
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 400
+                message: 'Invalid image: base64 decode failed'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: 已有广播任务在运行中
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 409
+                message: 'A broadcast task is already running'
+
+  /api/broadcast/{task_id}:
+    get:
+      summary: 查询广播任务状态
+      operationId: getBroadcastStatus
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 查询成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastStatusResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/broadcast/{task_id}/stop:
+    post:
+      summary: 停止广播任务
+      operationId: stopBroadcast
+      parameters:
+        - $ref: '#/components/parameters/TaskId'
+      responses:
+        '200':
+          description: 停止成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BroadcastStopResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      description: 广播任务 ID
+      schema:
+        type: string
+      example: bc_1710000000_a3f2
+
+  responses:
+    Unauthorized:
+      description: API Key 无效或缺失
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 401
+            message: Invalid API key
+    NotFound:
+      description: 任务不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            code: 404
+            message: Task not found
+
+  schemas:
+    InlineButton:
+      type: object
+      required: [text, url]
+      properties:
+        text:
+          type: string
+          description: 按钮显示文字
+          example: 立即访问
+        url:
+          type: string
+          format: uri
+          description: 按钮链接地址
+          example: https://example.com
+
+    SendConfig:
+      type: object
+      required: [rate, interval, max_recipients]
+      properties:
+        rate:
+          type: integer
+          minimum: 1
+          description: 每批发送条数（发完这批后暂停）
+          example: 20
+        interval:
+          type: integer
+          minimum: 0
+          description: 每批之间暂停秒数
+          example: 1
+        max_recipients:
+          type: integer
+          minimum: 0
+          description: 发送人数上限，0 表示全部用户
+          example: 0
+
+    BroadcastRequest:
+      type: object
+      required: [image, caption, config]
+      properties:
+        image:
+          type: string
+          format: byte
+          description: |
+            base64 编码的图片数据。
+            支持带 data URI 前缀 (data:image/jpeg;base64,...) 或纯 base64 字符串。
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRg...
+        caption:
+          type: string
+          description: |
+            消息文本内容，支持 HTML 格式。
+            解析失败时自动回退为纯文本发送。
+          example: <b>广告标题</b>\n详情点击下方按钮
+        buttons:
+          type: array
+          description: |
+            内联键盘按钮，二维数组。
+            外层数组的每个元素为一行按钮，内层数组为该行的按钮列表。
+            为空数组或不传则不附带按钮。
+          items:
+            type: array
+            items:
+              $ref: '#/components/schemas/InlineButton'
+          example:
+            - - text: 立即访问
+                url: https://example.com
+            - - text: 左按钮
+                url: https://a.com
+              - text: 右按钮
+                url: https://b.com
+        config:
+          $ref: '#/components/schemas/SendConfig'
+        user_ids:
+          type: array
+          description: |
+            指定接收广播的用户 ID 列表。
+            为空数组或不传则发送给全部用户。
+          items:
+            type: integer
+            format: int64
+          example: []
+
+    TaskStatus:
+      type: string
+      enum: [running, completed, stopped, failed]
+      description: |
+        任务状态：
+        - running: 正在发送中
+        - completed: 全部发送完成
+        - stopped: 被手动停止
+        - failed: 发送出错中断
+
+    BroadcastTaskData:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: 任务唯一标识
+          example: bc_1710000000_a3f2
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        total_recipients:
+          type: integer
+          description: 目标接收总人数
+          example: 26386
+        sent_count:
+          type: integer
+          description: 已发送条数
+          example: 8420
+        success_count:
+          type: integer
+          description: 发送成功条数
+          example: 8350
+        fail_count:
+          type: integer
+          description: 发送失败条数
+          example: 70
+        progress:
+          type: number
+          format: float
+          description: 发送进度百分比
+          example: 31.9
+        created_at:
+          type: string
+          format: date-time
+          example: '2026-03-10T14:30:00Z'
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: '2026-03-10T14:30:01Z'
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    BroadcastCreateResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 200
+        data:
+          type: object
+          properties:
+            task_id:
+              type: string
+              example: bc_1710000000_a3f2
+            total_recipients:
+              type: integer
+              example: 26386
+            status:
+              $ref: '#/components/schemas/TaskStatus'
+            created_at:
+              type: string
+              format: date-time
+              example: '2026-03-10T14:30:00Z'
+
+    BroadcastStatusResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 200
+        data:
+          $ref: '#/components/schemas/BroadcastTaskData'
+
+    BroadcastStopResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          example: 200
+        data:
+          type: object
+          properties:
+            task_id:
+              type: string
+              example: bc_1710000000_a3f2
+            status:
+              type: string
+              example: stopped
+            sent_count:
+              type: integer
+              example: 8420
+            success_count:
+              type: integer
+              example: 8350
+            fail_count:
+              type: integer
+              example: 70
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+          description: HTTP 状态码
+        message:
+          type: string
+          description: 错误描述

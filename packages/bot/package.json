@@ -11,11 +11,13 @@
     "grammy": "^1.35.0",
     "@prisma/client": "^6.4.0",
     "dotenv": "^16.4.0",
+    "express": "^4.21.0",
     "shared": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "tsx": "^4.7.0",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.11.0"
   }
 }

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from 'express';
+import multer from 'multer';
 import { ResourceService } from '../services/resource.service';
 import { authMiddleware } from '../middleware/auth';
 import { upload } from '../middleware/upload';
@@ -22,23 +23,41 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', upload.array('files', 10), async (req, res) => {
-  try {
-    const files = req.files as Express.Multer.File[];
-    if (!files || files.length === 0) {
-      return fail(res, '请上传至少一个文件');
+router.post('/', (req, res) => {
+  const uploadMiddleware = upload.array('files', 10);
+  uploadMiddleware(req, res, async (err: any) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        switch (err.code) {
+          case 'LIMIT_FILE_SIZE':
+            return fail(res, '文件大小超过 50MB 限制', 413);
+          case 'LIMIT_FILE_COUNT':
+            return fail(res, '最多上传 10 个文件', 400);
+          case 'LIMIT_UNEXPECTED_FILE':
+            return fail(res, '不支持的文件字段', 400);
+          default:
+            return fail(res, `上传错误: ${err.message}`, 400);
+        }
+      }
+      return fail(res, err.message || '文件类型不支持', 400);
     }
-    const { caption, groupId, type } = req.body;
-    const resource = await ResourceService.create({
-      type: type || (files.length > 1 ? 'media_group' : (files[0].mimetype.startsWith('video/') ? 'video' : 'photo')),
-      caption,
-      groupId: groupId ? parseInt(groupId) : undefined,
-      files,
-    });
-    return success(res, resource, 201);
-  } catch (err: any) {
-    return fail(res, err.message, 500);
-  }
+    try {
+      const files = req.files as Express.Multer.File[];
+      if (!files || files.length === 0) {
+        return fail(res, '请上传至少一个文件');
+      }
+      const { caption, groupId, type } = req.body;
+      const resource = await ResourceService.create({
+        type: type || (files.length > 1 ? 'media_group' : (files[0].mimetype.startsWith('video/') ? 'video' : 'photo')),
+        caption,
+        groupId: groupId ? parseInt(groupId) : undefined,
+        files,
+      });
+      return success(res, resource, 201);
+    } catch (err: any) {
+      return fail(res, err.message, 500);
+    }
+  });
 });
 
 router.put('/:id', async (req, res) => {

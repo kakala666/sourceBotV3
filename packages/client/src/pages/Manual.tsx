@@ -1,6 +1,6 @@
-import { Typography, Anchor, Divider, Alert } from 'antd';
+import { Typography, Divider, Alert } from 'antd';
 
-const { Title, Paragraph, Text, Link } = Typography;
+const { Title, Paragraph, Text } = Typography;
 
 export default function Manual() {
   return (
@@ -161,7 +161,7 @@ export default function Manual() {
 
         <Title level={5}>删除资源</Title>
         <Paragraph>
-          每张资源卡片上有删除按钮，确认后会永久删除该资源文件。如果该资源已被内容或广告引用，删除后对应的配置也会失效，请注意检查。
+          资源列表每行末尾有删除按钮，确认后会永久删除该资源文件。如果该资源已被内容或广告引用，删除后对应的配置也会失效，请注意检查。
         </Paragraph>
 
         <Divider />
@@ -196,7 +196,21 @@ export default function Manual() {
 
         <Title level={5}>调整顺序</Title>
         <Paragraph>
-          内容列表支持拖拽排序。按住某一项上下拖动，松开即可改变展示顺序。用户看到的内容会按照这个顺序依次展示。
+          内容列表支持拖拽排序。按住某一项左侧的拖拽图标上下拖动，松开即可改变展示顺序。用户看到的内容会按照这个顺序依次展示。
+        </Paragraph>
+
+        <Title level={5}>内容按钮</Title>
+        <Paragraph>
+          每条内容下方可以添加可点击的按钮，用户点击后会跳转到你指定的网址。
+        </Paragraph>
+        <Paragraph>
+          <ol>
+            <li>点击某条内容项，展开按钮编辑区域</li>
+            <li>点击「添加按钮」</li>
+            <li>填写按钮上显示的文字（比如"查看详情"、"加入频道"）</li>
+            <li>填写点击后跳转的网址（必须是完整的网址，以 http:// 或 https:// 开头）</li>
+            <li>可以添加多个按钮</li>
+          </ol>
         </Paragraph>
 
         <Title level={5}>保存</Title>
@@ -313,7 +327,9 @@ export default function Manual() {
           <ul>
             <li>默认显示最近 7 天的数据</li>
             <li>可以通过日期选择器自定义查看范围</li>
-            <li>鼠标悬停在柱子上可以看到当天的广告展示次数</li>
+            <li>支持切换图表类型：折线图、曲线图、柱状图、面积图，点击趋势图右上角的按钮即可切换</li>
+            <li>鼠标悬停在图表上可以看到当天的详细数据</li>
+            <li>同时展示新增用户和广告展示两个维度的数据</li>
           </ul>
         </Paragraph>
 

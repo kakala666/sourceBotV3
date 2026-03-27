@@ -1,3 +1,9 @@
+// 自动回复广告配置
+export interface AutoReplyAdConfig {
+  enabled: boolean;
+  text: string;
+}
+
 // 系统设置类型
 export interface SystemSettings {
   endContent: {
@@ -6,4 +12,5 @@ export interface SystemSettings {
   };
   adDisplaySeconds: number;
   statsGroupId: string;
+  autoReplyAd: AutoReplyAdConfig;
 }

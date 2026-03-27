@@ -101,10 +101,11 @@ model BotFileId {
 }
 
 model ContentBinding {
-  id           Int @id @default(autoincrement())
+  id           Int  @id @default(autoincrement())
   inviteLinkId Int
   resourceId   Int
-  sortOrder    Int @default(0)
+  sortOrder    Int  @default(0)
+  buttons      Json?
 
   inviteLink InviteLink @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
   resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Restrict)

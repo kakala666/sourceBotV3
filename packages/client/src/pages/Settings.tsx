@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  Form, Input, InputNumber, Button, Space, message, Typography, Card,
+  Form, Input, InputNumber, Button, Space, message, Typography, Card, Divider, Switch,
 } from 'antd';
 import { PlusOutlined, MinusCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import type { SystemSettings, ApiResponse } from 'shared';
@@ -13,7 +13,6 @@ export default function Settings() {
   const [form] = Form.useForm<SystemSettings>();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-
   useEffect(() => {
     const fetchSettings = async () => {
       setLoading(true);
@@ -104,6 +103,23 @@ export default function Settings() {
             name="statsGroupId"
           >
             <Input placeholder="Telegram 群组 ID（可选）" style={{ width: 300 }} />
+          </Form.Item>
+
+          <Divider>自动回复广告</Divider>
+
+          <Form.Item
+            label="启用自动回复"
+            name={['autoReplyAd', 'enabled']}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+
+          <Form.Item
+            label="回复内容"
+            name={['autoReplyAd', 'text']}
+          >
+            <TextArea rows={4} placeholder="用户发送消息时自动回复的文本内容" />
           </Form.Item>
 
           <Form.Item>

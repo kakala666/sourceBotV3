@@ -1,11 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Card, Table, DatePicker, message, Typography, Statistic, Row, Col,
+  Card, Table, DatePicker, message, Typography, Statistic, Row, Col, Radio,
 } from 'antd';
 import {
   UserAddOutlined, TeamOutlined, NotificationOutlined,
+  LineChartOutlined, BarChartOutlined, AreaChartOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import {
+  ResponsiveContainer, LineChart, BarChart, AreaChart,
+  Line, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+} from 'recharts';
 import type {
   StatsOverview, DailyStat, LinkStat, ApiResponse,
 } from 'shared';
@@ -14,32 +19,77 @@ import api from '@/services/api';
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
-// 简单趋势图占位组件（纯 CSS 柱状图）
-function TrendChart({ data }: { data: DailyStat[] }) {
+type ChartType = 'line' | 'smooth' | 'bar' | 'area';
+
+function TrendChart({ data, chartType }: { data: DailyStat[]; chartType: ChartType }) {
   if (data.length === 0) {
     return <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>暂无趋势数据</div>;
   }
-  const maxUsers = Math.max(...data.map((d) => d.newUsers), 1);
+
+  const chartData = data.map((d) => ({ ...d, date: d.date.slice(5) }));
+
+  const commonProps = {
+    data: chartData,
+    margin: { top: 5, right: 20, left: 0, bottom: 5 },
+  };
+
+  const renderChart = () => {
+    switch (chartType) {
+      case 'bar':
+        return (
+          <BarChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey="newUsers" name="新增用户" fill="#1677ff" />
+            <Bar dataKey="adImpressions" name="广告展示" fill="#ff7a45" />
+          </BarChart>
+        );
+      case 'area':
+        return (
+          <AreaChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip />
+            <Legend />
+            <Area type="monotone" dataKey="newUsers" name="新增用户" stroke="#1677ff" fill="#1677ff" fillOpacity={0.2} />
+            <Area type="monotone" dataKey="adImpressions" name="广告展示" stroke="#ff7a45" fill="#ff7a45" fillOpacity={0.2} />
+          </AreaChart>
+        );
+      case 'smooth':
+        return (
+          <LineChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="newUsers" name="新增用户" stroke="#1677ff" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="adImpressions" name="广告展示" stroke="#ff7a45" strokeWidth={2} dot={{ r: 3 }} />
+          </LineChart>
+        );
+      default:
+        return (
+          <LineChart {...commonProps}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="date" fontSize={12} />
+            <YAxis fontSize={12} />
+            <Tooltip />
+            <Legend />
+            <Line type="linear" dataKey="newUsers" name="新增用户" stroke="#1677ff" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="linear" dataKey="adImpressions" name="广告展示" stroke="#ff7a45" strokeWidth={2} dot={{ r: 3 }} />
+          </LineChart>
+        );
+    }
+  };
+
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: 200, padding: '0 8px' }}>
-      {data.map((d) => (
-        <div key={d.date} style={{ flex: 1, textAlign: 'center' }}>
-          <div
-            style={{
-              height: `${(d.newUsers / maxUsers) * 160}px`,
-              background: '#1677ff',
-              borderRadius: '4px 4px 0 0',
-              minHeight: 2,
-              transition: 'height 0.3s',
-            }}
-            title={`${d.date}: 新增 ${d.newUsers}, 广告 ${d.adImpressions}`}
-          />
-          <div style={{ fontSize: 10, color: '#999', marginTop: 4, transform: 'rotate(-45deg)', whiteSpace: 'nowrap' }}>
-            {d.date.slice(5)}
-          </div>
-        </div>
-      ))}
-    </div>
+    <ResponsiveContainer width="100%" height={300}>
+      {renderChart()}
+    </ResponsiveContainer>
   );
 }
 
@@ -48,6 +98,7 @@ export default function Stats() {
   const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
   const [linkStats, setLinkStats] = useState<LinkStat[]>([]);
   const [loading, setLoading] = useState(false);
+  const [chartType, setChartType] = useState<ChartType>('line');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
     dayjs().subtract(7, 'day'),
     dayjs(),
@@ -138,22 +189,30 @@ export default function Stats() {
         </Col>
       </Row>
 
-      {/* 趋势图占位 */}
+      {/* 趋势图 */}
       <Card
         title="趋势图"
         style={{ marginBottom: 24 }}
         extra={
-          <RangePicker
-            value={dateRange}
-            onChange={(dates) => {
-              if (dates && dates[0] && dates[1]) {
-                setDateRange([dates[0], dates[1]]);
-              }
-            }}
-          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Radio.Group value={chartType} onChange={(e) => setChartType(e.target.value)} size="small">
+              <Radio.Button value="line"><LineChartOutlined /> 折线图</Radio.Button>
+              <Radio.Button value="smooth"><LineChartOutlined /> 曲线图</Radio.Button>
+              <Radio.Button value="bar"><BarChartOutlined /> 柱状图</Radio.Button>
+              <Radio.Button value="area"><AreaChartOutlined /> 面积图</Radio.Button>
+            </Radio.Group>
+            <RangePicker
+              value={dateRange}
+              onChange={(dates) => {
+                if (dates && dates[0] && dates[1]) {
+                  setDateRange([dates[0], dates[1]]);
+                }
+              }}
+            />
+          </div>
         }
       >
-        <TrendChart data={dailyStats} />
+        <TrendChart data={dailyStats} chartType={chartType} />
       </Card>
 
       {/* 按链接细分 */}
