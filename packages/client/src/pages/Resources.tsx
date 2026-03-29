@@ -108,7 +108,38 @@ export default function Resources() {
     setGroupModalOpen(true);
   };
 
+  // 编辑资源状态
+  const [editResourceModalOpen, setEditResourceModalOpen] = useState(false);
+  const [editingResource, setEditingResource] = useState<ResourceInfo | null>(null);
+  const [editResourceForm] = Form.useForm();
+
   // 资源操作
+  const handleEditResource = async () => {
+    try {
+      const values = await editResourceForm.validateFields();
+      await api.put(`/resources/${editingResource!.id}`, {
+        caption: values.caption || null,
+        groupId: values.groupId ?? null,
+      });
+      message.success('更新成功');
+      setEditResourceModalOpen(false);
+      setEditingResource(null);
+      editResourceForm.resetFields();
+      fetchResources();
+    } catch {
+      message.error('更新失败');
+    }
+  };
+
+  const openEditResource = (resource: ResourceInfo) => {
+    setEditingResource(resource);
+    editResourceForm.setFieldsValue({
+      caption: resource.caption || '',
+      groupId: resource.group?.id || undefined,
+    });
+    setEditResourceModalOpen(true);
+  };
+
   const handleDeleteResource = async (id: number) => {
     try {
       await api.delete(`/resources/${id}`);
@@ -272,11 +303,14 @@ export default function Resources() {
                 },
                 {
                   title: '操作',
-                  width: 80,
+                  width: 120,
                   render: (_: unknown, record: ResourceInfo) => (
-                    <Popconfirm title="确定删除？" onConfirm={() => handleDeleteResource(record.id)}>
-                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
+                    <Space>
+                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditResource(record)} />
+                      <Popconfirm title="确定删除？" onConfirm={() => handleDeleteResource(record.id)}>
+                        <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                      </Popconfirm>
+                    </Space>
                   ),
                 },
               ]}
@@ -295,6 +329,25 @@ export default function Resources() {
         <Form form={groupForm} layout="vertical">
           <Form.Item name="name" label="分组名称" rules={[{ required: true, message: '请输入分组名称' }]}>
             <Input placeholder="分组名称" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 编辑资源弹窗 */}
+      <Modal
+        title="编辑资源"
+        open={editResourceModalOpen}
+        onOk={handleEditResource}
+        onCancel={() => { setEditResourceModalOpen(false); setEditingResource(null); editResourceForm.resetFields(); }}
+        destroyOnClose
+      >
+        <Form form={editResourceForm} layout="vertical">
+          <Form.Item name="caption" label="文案">
+            <Input.TextArea placeholder="资源文案（可选）" rows={4} />
+          </Form.Item>
+          <Form.Item name="groupId" label="所属分组">
+            <Select placeholder="选择分组（可选）" allowClear
+              options={groups.map((g) => ({ label: g.name, value: g.id }))} />
           </Form.Item>
         </Form>
       </Modal>
