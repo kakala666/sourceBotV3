@@ -27,9 +27,10 @@ model Bot {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  inviteLinks InviteLink[]
-  fileIds     BotFileId[]
-  botUsers    BotUser[]
+  inviteLinks      InviteLink[]
+  fileIds          BotFileId[]
+  botUsers         BotUser[]
+  subscriptionGate SubscriptionGate?
 }
 
 model InviteLink {
@@ -167,4 +168,44 @@ model SystemSetting {
   id    Int    @id @default(autoincrement())
   key   String @unique
   value Json
+}
+
+model SubscriptionGate {
+  id              Int      @id @default(autoincrement())
+  botId           Int      @unique
+  isEnabled       Boolean  @default(false)
+  promptTemplate  String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot      Bot                       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  channels SubscriptionGateChannel[]
+}
+
+model SubscriptionGateChannel {
+  id          Int      @id @default(autoincrement())
+  gateId      Int
+  username    String
+  chatId      BigInt
+  title       String
+  inviteUrl   String
+  sortOrder   Int      @default(0)
+  status      String   @default("ok")
+  lastCheckAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  gate SubscriptionGate @relation(fields: [gateId], references: [id], onDelete: Cascade)
+
+  @@unique([gateId, chatId])
+}
+
+model SubscriptionCheckPass {
+  id          Int      @id @default(autoincrement())
+  botId       Int
+  telegramId  BigInt
+  passDate    String
+  passedAt    DateTime @default(now())
+
+  @@unique([botId, telegramId, passDate])
+  @@index([botId, telegramId])
 }

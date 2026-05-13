@@ -7,3 +7,4 @@ export * from './user';
 export * from './settings';
 export * from './common';
 export * from './admin';
+export * from './subscription-gate';
