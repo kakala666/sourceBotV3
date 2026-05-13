@@ -120,6 +120,7 @@ model SubscriptionGateChannel {
   status      String   @default("ok")  // "ok" | "bot_not_admin" | "channel_gone"
   lastCheckAt DateTime @default(now())
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   gate SubscriptionGate @relation(fields: [gateId], references: [id], onDelete: Cascade)
 
@@ -134,7 +135,7 @@ model SubscriptionCheckPass {
   passedAt    DateTime @default(now())
 
   @@unique([botId, telegramId, passDate])
-  @@index([botId, telegramId])
+  @@index([passDate])  // 配合未来 cleanup cron(WHERE passDate < today - 7d)
 }
 ```
 

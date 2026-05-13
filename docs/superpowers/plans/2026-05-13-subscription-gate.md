@@ -96,6 +96,7 @@ model SubscriptionGateChannel {
   status      String   @default("ok")
   lastCheckAt DateTime @default(now())
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   gate SubscriptionGate @relation(fields: [gateId], references: [id], onDelete: Cascade)
 
@@ -110,7 +111,7 @@ model SubscriptionCheckPass {
   passedAt    DateTime @default(now())
 
   @@unique([botId, telegramId, passDate])
-  @@index([botId, telegramId])
+  @@index([passDate])
 }
 ```
 
