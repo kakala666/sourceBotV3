@@ -3,11 +3,12 @@ import {
   Table, Button, Modal, Form, Input, Switch, Space, message, Popconfirm, Typography,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { BotInfo, BotCreateInput, ApiResponse } from 'shared';
 import api from '@/services/api';
+import SubscriptionGateDrawer from '@/components/SubscriptionGateDrawer';
 
 const { Title } = Typography;
 
@@ -19,6 +20,7 @@ export default function Bots() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<BotInfo | null>(null);
   const [form] = Form.useForm<BotCreateInput>();
+  const [gateDrawer, setGateDrawer] = useState<{ open: boolean; bot: BotInfo | null }>({ open: false, bot: null });
   const navigate = useNavigate();
 
   const fetchBots = useCallback(async () => {
@@ -135,6 +137,9 @@ export default function Bots() {
           <Button size="small" icon={<LinkOutlined />} onClick={() => navigate(`/bots/${record.id}/links`)}>
             管理链接
           </Button>
+          <Button size="small" icon={<LockOutlined />} onClick={() => setGateDrawer({ open: true, bot: record })}>
+            强制订阅
+          </Button>
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
@@ -174,6 +179,12 @@ export default function Bots() {
           </Form.Item>
         </Form>
       </Modal>
+      <SubscriptionGateDrawer
+        open={gateDrawer.open}
+        botId={gateDrawer.bot?.id ?? null}
+        botName={gateDrawer.bot?.name ?? ''}
+        onClose={() => setGateDrawer({ open: false, bot: null })}
+      />
     </>
   );
 }
