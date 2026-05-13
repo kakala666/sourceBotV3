@@ -118,16 +118,15 @@ async function sendToUser(
 }
 
 /**
- * 收集所有接收者列表
+ * 收集接收者列表(限定在 targetBotIds 范围内)
  */
 async function collectRecipients(
-  botManager: BotManager,
   request: BroadcastRequest,
+  targetBotIds: number[],
 ): Promise<Recipient[]> {
-  const activeBotIds = botManager.getActiveBotIds();
-  if (activeBotIds.length === 0) return [];
+  if (targetBotIds.length === 0) return [];
 
-  const where: any = { botId: { in: activeBotIds } };
+  const where: any = { botId: { in: targetBotIds } };
   if (request.user_ids && request.user_ids.length > 0) {
     where.telegramId = { in: request.user_ids.map((id) => BigInt(id)) };
   }
@@ -154,12 +153,13 @@ async function collectRecipients(
 }
 
 /**
- * 执行广播任务
+ * 执行广播任务(targetBotIds 指定本次广播覆盖的 Bot 范围)
  */
 export async function executeBroadcast(
   taskId: string,
   request: BroadcastRequest,
   botManager: BotManager,
+  targetBotIds: number[],
 ): Promise<void> {
   const task = getTask(taskId);
   if (!task) return;
@@ -175,7 +175,7 @@ export async function executeBroadcast(
     const { rate, interval } = request.config;
 
     // 按 botId 分组
-    const recipients = await collectRecipients(botManager, request);
+    const recipients = await collectRecipients(request, targetBotIds);
     updateTask(taskId, { total_recipients: recipients.length });
 
     if (recipients.length === 0) {

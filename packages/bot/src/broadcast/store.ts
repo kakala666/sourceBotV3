@@ -9,7 +9,11 @@ export function generateTaskId(): string {
   return `bc_${ts}_${rand}`;
 }
 
-export function createTask(taskId: string, totalRecipients: number): BroadcastTask {
+export function createTask(
+  taskId: string,
+  totalRecipients: number,
+  botIds: number[],
+): BroadcastTask {
   const task: BroadcastTask = {
     task_id: taskId,
     status: 'running',
@@ -21,6 +25,7 @@ export function createTask(taskId: string, totalRecipients: number): BroadcastTa
     created_at: new Date().toISOString(),
     started_at: new Date().toISOString(),
     finished_at: null,
+    bot_ids: botIds,
   };
   tasks.set(taskId, task);
   return task;
@@ -30,11 +35,20 @@ export function getTask(taskId: string): BroadcastTask | undefined {
   return tasks.get(taskId);
 }
 
-export function hasRunningTask(): boolean {
+/**
+ * 查找与给定 botIds 有交集的运行中任务。
+ * 返回冲突的任务(便于错误消息携带 task_id),无冲突则返回 undefined。
+ * 这允许不同 Bot 的广播并行执行。
+ */
+export function findConflictingTask(botIds: number[]): BroadcastTask | undefined {
+  const target = new Set(botIds);
   for (const task of tasks.values()) {
-    if (task.status === 'running') return true;
+    if (task.status !== 'running') continue;
+    if (task.bot_ids.some((id) => target.has(id))) {
+      return task;
+    }
   }
-  return false;
+  return undefined;
 }
 
 export function updateTask(taskId: string, update: Partial<BroadcastTask>) {

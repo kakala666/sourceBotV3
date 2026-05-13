@@ -1,7 +1,8 @@
 import { Router, type IRouter } from 'express';
 import type { BotManager } from '../manager/bot-manager';
+import prisma from '../prisma';
 import type { BroadcastRequest } from './types';
-import { generateTaskId, createTask, getTask, hasRunningTask, updateTask } from './store';
+import { generateTaskId, createTask, getTask, findConflictingTask, updateTask } from './store';
 import { executeBroadcast } from './executor';
 
 export function createBroadcastRouter(botManager: BotManager): IRouter {
@@ -38,16 +39,51 @@ export function createBroadcastRouter(botManager: BotManager): IRouter {
       }
     }
 
-    // 检查是否有运行中任务
-    if (hasRunningTask()) {
-      return res.status(409).json({ code: 409, message: 'A broadcast task is already running' });
+    // 解析目标 Bot 范围
+    const activeBotIds = botManager.getActiveBotIds();
+    if (activeBotIds.length === 0) {
+      return res.status(503).json({ code: 503, message: 'No active bots available' });
+    }
+
+    let targetBotIds: number[];
+    const botName = body.bot_name?.trim();
+    if (botName) {
+      const matched = await prisma.bot.findMany({
+        where: { name: botName },
+        select: { id: true, name: true, isActive: true },
+      });
+      if (matched.length === 0) {
+        return res.status(404).json({ code: 404, message: `Bot not found: ${botName}` });
+      }
+      if (matched.length > 1) {
+        return res.status(400).json({
+          code: 400,
+          message: `bot_name '${botName}' matched ${matched.length} bots, must be unique`,
+        });
+      }
+      const bot = matched[0];
+      if (!bot.isActive || !activeBotIds.includes(bot.id)) {
+        return res.status(409).json({ code: 409, message: `Bot '${botName}' is not running` });
+      }
+      targetBotIds = [bot.id];
+    } else {
+      targetBotIds = activeBotIds;
+    }
+
+    // 按 Bot 粒度的并发冲突检测:只有 bot_ids 有交集才冲突,不同 Bot 可并行
+    const conflict = findConflictingTask(targetBotIds);
+    if (conflict) {
+      return res.status(409).json({
+        code: 409,
+        message: `Another broadcast is running for overlapping bots (task_id: ${conflict.task_id})`,
+      });
     }
 
     const taskId = generateTaskId();
-    const task = createTask(taskId, 0);
+    const task = createTask(taskId, 0, targetBotIds);
 
     // 异步执行，不阻塞响应
-    executeBroadcast(taskId, body, botManager).catch((err) => {
+    executeBroadcast(taskId, body, botManager, targetBotIds).catch((err) => {
       console.error(`[Broadcast] 异步执行错误:`, err);
     });
 
@@ -58,6 +94,7 @@ export function createBroadcastRouter(botManager: BotManager): IRouter {
         total_recipients: task.total_recipients,
         status: task.status,
         created_at: task.created_at,
+        bot_ids: task.bot_ids,
       },
     });
   });

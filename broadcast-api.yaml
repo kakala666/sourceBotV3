@@ -51,15 +51,33 @@ paths:
                 message: 'Invalid image: base64 decode failed'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: 指定的 bot_name 不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 404
+                message: 'Bot not found: V2-极搜'
         '409':
-          description: 已有广播任务在运行中
+          description: 目标 Bot 已有广播任务在运行中(或指定 Bot 未运行)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
               example:
                 code: 409
-                message: 'A broadcast task is already running'
+                message: 'Another broadcast is running for overlapping bots (task_id: bc_xxx)'
+        '503':
+          description: 当前无任何活跃 Bot 可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                code: 503
+                message: 'No active bots available'
 
   /api/broadcast/{task_id}:
     get:
@@ -214,6 +232,16 @@ components:
             type: integer
             format: int64
           example: []
+        bot_name:
+          type: string
+          description: |
+            指定广播目标 Bot 的名称(Bot 表的 name 字段)。
+            - 不传或空字符串:对**所有活跃 Bot** 广播(可能对同一 telegramId 重复触达)
+            - 指定 name:仅对该 Bot 的用户广播,不会跨 Bot 扇出
+
+            不同 Bot 可并行广播(互不阻塞),同一 Bot 不可并发两个任务。
+            name 必须在 Bot 表中唯一,否则返回 400。
+          example: V2-极搜
 
     TaskStatus:
       type: string
@@ -234,6 +262,12 @@ components:
           example: bc_1710000000_a3f2
         status:
           $ref: '#/components/schemas/TaskStatus'
+        bot_ids:
+          type: array
+          description: 本任务覆盖的 Bot ID 列表(按 name 解析后的结果,或全部活跃 Bot)
+          items:
+            type: integer
+          example: [19]
         total_recipients:
           type: integer
           description: 目标接收总人数
@@ -287,6 +321,12 @@ components:
               example: 26386
             status:
               $ref: '#/components/schemas/TaskStatus'
+            bot_ids:
+              type: array
+              description: 本任务覆盖的 Bot ID 列表
+              items:
+                type: integer
+              example: [19]
             created_at:
               type: string
               format: date-time
