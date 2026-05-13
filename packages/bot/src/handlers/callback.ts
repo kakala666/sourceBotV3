@@ -3,6 +3,8 @@ import prisma from '../prisma';
 import { getActiveSession, advanceSession, completeSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
+import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
+import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -14,7 +16,21 @@ export async function handleCallback(ctx: Context, botId: number) {
   const data = ctx.callbackQuery?.data;
   if (!data) return;
 
-  // 解析回调数据
+  // 订阅校验回调
+  const checkMatch = data.match(/^check_sub:(\d+):(\d+)$/);
+  if (checkMatch) {
+    const sessionId = parseInt(checkMatch[1], 10);
+    const nextIndex = parseInt(checkMatch[2], 10);
+    try {
+      await handleSubscriptionRecheck(ctx, botId, sessionId, nextIndex);
+    } catch (err: any) {
+      console.error('[callback] check_sub 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '验证失败,请重试', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 解析翻页回调
   const match = data.match(/^next:(\d+):(\d+)$/);
   if (!match) {
     await ctx.answerCallbackQuery();
@@ -62,6 +78,14 @@ async function processNextPage(
   if (!session || session.isCompleted) return;
 
   const { botUser } = session;
+
+  // 强制订阅拦截
+  const gateResult = await ensureSubscribed(botId, botUser.telegramId, ctx.api);
+  if (!gateResult.ok) {
+    const config = getGateConfig(botId);
+    await sendSubscriptionPrompt(ctx, config?.promptTemplate, sessionId, nextIndex, gateResult.missing);
+    return;
+  }
 
   // 查询邀请链接的内容和广告
   const contentBindings = await loadContentBindings(botUser.inviteLinkId);
@@ -140,5 +164,44 @@ async function processNextPage(
       const fallbackKb = buildPageKeyboard(sessionId, nextIndex + 1);
       await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
     }
+  }
+}
+
+/**
+ * 处理订阅校验回调 check_sub:{sessionId}:{nextIndex}
+ */
+async function handleSubscriptionRecheck(
+  ctx: Context,
+  botId: number,
+  sessionId: number,
+  nextIndex: number,
+) {
+  const session = await prisma.userSession.findUnique({
+    where: { id: sessionId },
+    include: { botUser: true },
+  });
+  if (!session) {
+    await ctx.answerCallbackQuery({ text: '会话已失效', show_alert: true });
+    return;
+  }
+
+  const result = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+  if (!result.ok) {
+    await ctx.answerCallbackQuery({
+      text: '还有未订阅的频道,请检查后再试',
+      show_alert: true,
+    });
+    return;
+  }
+
+  await ctx.answerCallbackQuery({ text: '✅ 验证通过' });
+  await ctx.deleteMessage().catch(() => {});
+
+  if (processingSet.has(sessionId)) return;
+  processingSet.add(sessionId);
+  try {
+    await processNextPage(ctx, botId, sessionId, nextIndex);
+  } finally {
+    processingSet.delete(sessionId);
   }
 }

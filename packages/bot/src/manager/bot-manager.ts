@@ -4,6 +4,7 @@ import { handleStart } from '../handlers/start';
 import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
+import { reloadAllGateConfigs } from '../services/subscription-check';
 import fs from 'fs';
 import path from 'path';
 
@@ -80,6 +81,13 @@ export class BotManager {
       if (!activeIds.has(botId)) {
         await this.stopBot(botId);
       }
+    }
+
+    // 刷新强制订阅配置缓存
+    try {
+      await reloadAllGateConfigs();
+    } catch (err: any) {
+      console.error('[BotManager] 加载强制订阅配置失败:', err.message);
     }
   }
 
