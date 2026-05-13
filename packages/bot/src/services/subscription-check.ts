@@ -1,6 +1,5 @@
 import type { Api } from 'grammy';
 import realPrisma from '../prisma';
-import { formatShanghaiDate } from './local-date';
 
 export interface ChannelCfg {
   id: number;
@@ -66,16 +65,13 @@ function classifyApiError(err: any): 'bot_not_admin' | 'channel_gone' | 'transie
   return 'transient';
 }
 
+/**
+ * 每次翻页都调 Telegram API 检查订阅状态(不使用缓存)。
+ * 用户当天退订也能立刻被拦截,代价是每次翻页 N 次 API 调用。
+ */
 export async function ensureSubscribed(botId: number, telegramId: bigint, botApi: Api): Promise<CheckResult> {
   const config = configCache.get(botId);
   if (!config?.isEnabled) return { ok: true };
-
-  const today = formatShanghaiDate();
-
-  const cached = await prismaRef.subscriptionCheckPass.findUnique({
-    where: { botId_telegramId_passDate: { botId, telegramId, passDate: today } },
-  });
-  if (cached) return { ok: true };
 
   const missing: { username: string; title: string; inviteUrl: string }[] = [];
 
@@ -101,14 +97,5 @@ export async function ensureSubscribed(botId: number, telegramId: bigint, botApi
     }
   }
 
-  if (missing.length === 0) {
-    await prismaRef.subscriptionCheckPass.upsert({
-      where: { botId_telegramId_passDate: { botId, telegramId, passDate: today } },
-      create: { botId, telegramId, passDate: today },
-      update: {},
-    });
-    return { ok: true };
-  }
-
-  return { ok: false, missing };
+  return missing.length === 0 ? { ok: true } : { ok: false, missing };
 }
