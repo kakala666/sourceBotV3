@@ -6,3 +6,7 @@ uploads/*
 *.tsbuildinfo
 .bot-reload
 .claude/
+
+# 本地参考资料与调试截图
+contents_with_data.png
+提问的智慧.md
