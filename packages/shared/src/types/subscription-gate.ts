@@ -8,8 +8,9 @@ export interface SubscriptionGateInfo {
 
 export interface SubscriptionGateChannelInfo {
   id: number;
-  username: string;
-  chatId: string;        // BigInt 序列化为 string
+  isPrivate: boolean;
+  username: string | null;  // 私有频道无 username
+  chatId: string;           // BigInt 序列化为 string
   title: string;
   inviteUrl: string;
   sortOrder: number;
@@ -24,4 +25,6 @@ export interface SubscriptionGateUpdateInput {
 
 export interface SubscriptionGateChannelCreateInput {
   inviteUrl: string;
+  /** 私有频道必填(用户手工提供 chat_id),公开频道不传 */
+  chatId?: string;
 }

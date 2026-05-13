@@ -1,5 +1,9 @@
 import prisma from './prisma';
-import { verifyChannelForBot, parseChannelUrl } from './telegram-channel';
+import {
+  verifyChannelForBot,
+  parseChannelUrl,
+  verifyPrivateChannelForBot,
+} from './telegram-channel';
 
 export class SubscriptionGateService {
   /** 拿配置;不存在则懒创建一个 default-off 记录返回 */
@@ -26,12 +30,27 @@ export class SubscriptionGateService {
     });
   }
 
-  static async addChannel(botId: number, inviteUrl: string) {
+  static async addChannel(botId: number, inviteUrl: string, chatIdInput?: string) {
     const bot = await prisma.bot.findUnique({ where: { id: botId } });
     if (!bot) throw new Error('Bot 不存在');
 
-    const { username } = parseChannelUrl(inviteUrl);
-    const verified = await verifyChannelForBot(bot.token, username);
+    const isPrivate = !!chatIdInput;
+
+    let verified;
+    let username: string | null;
+    let storedInviteUrl: string;
+
+    if (isPrivate) {
+      verified = await verifyPrivateChannelForBot(bot.token, chatIdInput!);
+      username = verified.username || null;
+      if (!inviteUrl?.trim()) throw new Error('请提供私有频道的邀请链接');
+      storedInviteUrl = inviteUrl.trim();
+    } else {
+      const parsed = parseChannelUrl(inviteUrl);
+      verified = await verifyChannelForBot(bot.token, parsed.username);
+      username = verified.username;
+      storedInviteUrl = `https://t.me/${verified.username}`;
+    }
 
     const gate = await this.getOrCreate(botId);
 
@@ -43,10 +62,11 @@ export class SubscriptionGateService {
     return prisma.subscriptionGateChannel.create({
       data: {
         gateId: gate.id,
-        username: verified.username,
+        isPrivate,
+        username,
         chatId: BigInt(verified.chatId),
         title: verified.title,
-        inviteUrl: `https://t.me/${verified.username}`,
+        inviteUrl: storedInviteUrl,
         sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
         status: 'ok',
       },
@@ -73,7 +93,9 @@ export class SubscriptionGateService {
     if (!bot) throw new Error('Bot 不存在');
 
     try {
-      const verified = await verifyChannelForBot(bot.token, channel.username);
+      const verified = channel.isPrivate
+        ? await verifyPrivateChannelForBot(bot.token, channel.chatId.toString())
+        : await verifyChannelForBot(bot.token, channel.username ?? '');
       return prisma.subscriptionGateChannel.update({
         where: { id: channelId },
         data: {

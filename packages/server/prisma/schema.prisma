@@ -185,7 +185,8 @@ model SubscriptionGate {
 model SubscriptionGateChannel {
   id          Int      @id @default(autoincrement())
   gateId      Int
-  username    String
+  isPrivate   Boolean  @default(false)
+  username    String?  // 私有频道无 username
   chatId      BigInt
   title       String
   inviteUrl   String

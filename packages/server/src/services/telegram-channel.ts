@@ -95,3 +95,66 @@ export async function verifyChannelForBot(botToken: string, username: string): P
     username: chat.result.username || username,
   };
 }
+
+/** 把用户填的 chat_id 规范化为 `-100xxxxxxxxxx` 格式。
+ *  接受形式:`-1001234567890` | `1234567890`(自动补 -100 前缀)。
+ */
+export function normalizePrivateChatId(input: string): string {
+  const trimmed = (input ?? '').trim();
+  if (!trimmed) throw new Error('chat_id 不能为空');
+
+  // 已是 -100 开头的负数
+  if (/^-100\d+$/.test(trimmed)) return trimmed;
+
+  // 纯正数(可能带前导符号)
+  const digits = trimmed.replace(/^[+\-]?/, '');
+  if (!/^\d+$/.test(digits)) {
+    throw new Error('chat_id 必须是数字(如 1234567890 或 -1001234567890)');
+  }
+  // 用户填的若已是带 -100 前缀的正数(理论上不会),也兼容一下
+  if (digits.startsWith('100')) {
+    return `-${digits}`;
+  }
+  return `-100${digits}`;
+}
+
+/** 校验私有频道:用 chat_id 调 getChat 获取频道标题,验证 Bot 是管理员。 */
+export async function verifyPrivateChannelForBot(
+  botToken: string,
+  chatIdRaw: string
+): Promise<VerifiedChannel> {
+  const chatId = normalizePrivateChatId(chatIdRaw);
+
+  const me = await callTg<{ id: number }>(botToken, 'getMe', {});
+  if (!me.ok || !me.result) throw new Error('Bot Token 无效');
+  const botSelfId = me.result.id;
+
+  const chat = await callTg<{ id: number; type: string; title?: string; username?: string }>(
+    botToken,
+    'getChat',
+    { chat_id: chatId }
+  );
+  if (!chat.ok || !chat.result) {
+    throw new Error('找不到频道,请检查 chat_id 是否正确,且 Bot 已加入该频道');
+  }
+  if (chat.result.type !== 'channel') {
+    throw new Error('目标不是频道');
+  }
+
+  const member = await callTg<{ status: string }>(botToken, 'getChatMember', {
+    chat_id: chatId,
+    user_id: botSelfId,
+  });
+  if (!member.ok || !member.result) {
+    throw new Error('无法查询 Bot 在频道的成员状态');
+  }
+  if (member.result.status !== 'administrator' && member.result.status !== 'creator') {
+    throw new Error('请先把本 Bot 设为该频道的管理员');
+  }
+
+  return {
+    chatId: String(chat.result.id),
+    title: chat.result.title || `Private ${chatId}`,
+    username: chat.result.username || '',  // 私有频道一般无 username
+  };
+}

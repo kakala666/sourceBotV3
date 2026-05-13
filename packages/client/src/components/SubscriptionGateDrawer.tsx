@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import {
-  Drawer, Switch, Input, Button, List, Tag, Space, message, Popconfirm, Typography, Divider,
+  Drawer, Switch, Input, Button, List, Tag, Space, message, Popconfirm, Typography, Divider, Segmented,
 } from 'antd';
-import { ReloadOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import { ReloadOutlined, DeleteOutlined, PlusOutlined, GlobalOutlined, LockOutlined } from '@ant-design/icons';
 import type {
   SubscriptionGateInfo, SubscriptionGateChannelInfo, ApiResponse,
 } from 'shared';
@@ -27,6 +27,8 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   const [gate, setGate] = useState<SubscriptionGateInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [newUrl, setNewUrl] = useState('');
+  const [newChatId, setNewChatId] = useState('');
+  const [mode, setMode] = useState<'public' | 'private'>('public');
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [template, setTemplate] = useState('');
@@ -50,7 +52,13 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
 
   useEffect(() => {
     if (open && botId) reload();
-    if (!open) { setGate(null); setNewUrl(''); setAddError(null); }
+    if (!open) {
+      setGate(null);
+      setNewUrl('');
+      setNewChatId('');
+      setMode('public');
+      setAddError(null);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, botId]);
 
@@ -69,12 +77,23 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   const addChannel = async () => {
-    if (!botId || !newUrl.trim()) return;
+    if (!botId) return;
+    if (!newUrl.trim()) {
+      setAddError(mode === 'private' ? '请填邀请链接(用户加入用)' : '请填频道链接');
+      return;
+    }
+    if (mode === 'private' && !newChatId.trim()) {
+      setAddError('请填私有频道的 chat_id(数字)');
+      return;
+    }
     setAdding(true);
     setAddError(null);
     try {
-      await api.post(`/bots/${botId}/subscription-gate/channels`, { inviteUrl: newUrl.trim() });
+      const body: { inviteUrl: string; chatId?: string } = { inviteUrl: newUrl.trim() };
+      if (mode === 'private') body.chatId = newChatId.trim();
+      await api.post(`/bots/${botId}/subscription-gate/channels`, body);
       setNewUrl('');
+      setNewChatId('');
       message.success('频道已添加');
       await reload();
     } catch (err: any) {
@@ -136,18 +155,54 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
 
           <Divider orientation="left">必订频道(全部订阅才通过)</Divider>
 
-          <Space.Compact style={{ width: '100%', marginBottom: 4 }}>
-            <Input
-              placeholder="@xxx 或 https://t.me/xxx"
-              value={newUrl}
-              onChange={(e) => { setNewUrl(e.target.value); setAddError(null); }}
-              onPressEnter={addChannel}
-              disabled={adding}
-            />
-            <Button type="primary" icon={<PlusOutlined />} loading={adding} onClick={addChannel}>
-              添加
-            </Button>
-          </Space.Compact>
+          <Segmented
+            value={mode}
+            onChange={(v) => { setMode(v as 'public' | 'private'); setAddError(null); }}
+            options={[
+              { label: '公开频道', value: 'public', icon: <GlobalOutlined /> },
+              { label: '私有频道', value: 'private', icon: <LockOutlined /> },
+            ]}
+            style={{ marginBottom: 8 }}
+          />
+
+          {mode === 'public' ? (
+            <Space.Compact style={{ width: '100%', marginBottom: 4 }}>
+              <Input
+                placeholder="@xxx 或 https://t.me/xxx"
+                value={newUrl}
+                onChange={(e) => { setNewUrl(e.target.value); setAddError(null); }}
+                onPressEnter={addChannel}
+                disabled={adding}
+              />
+              <Button type="primary" icon={<PlusOutlined />} loading={adding} onClick={addChannel}>
+                添加
+              </Button>
+            </Space.Compact>
+          ) : (
+            <Space direction="vertical" style={{ width: '100%', marginBottom: 4 }} size={6}>
+              <Input
+                placeholder="邀请链接 https://t.me/+xxxxx(用户加入用)"
+                value={newUrl}
+                onChange={(e) => { setNewUrl(e.target.value); setAddError(null); }}
+                disabled={adding}
+              />
+              <Space.Compact style={{ width: '100%' }}>
+                <Input
+                  placeholder="chat_id,如 -1001234567890 或 1234567890"
+                  value={newChatId}
+                  onChange={(e) => { setNewChatId(e.target.value); setAddError(null); }}
+                  onPressEnter={addChannel}
+                  disabled={adding}
+                />
+                <Button type="primary" icon={<PlusOutlined />} loading={adding} onClick={addChannel}>
+                  添加
+                </Button>
+              </Space.Compact>
+              <Paragraph type="secondary" style={{ fontSize: 12, margin: 0 }}>
+                Bot 必须已是该私有频道的管理员;频道名将由 Bot 自动获取。
+              </Paragraph>
+            </Space>
+          )}
           {addError && <Text type="danger" style={{ display: 'block', marginBottom: 12 }}>{addError}</Text>}
 
           <List
@@ -163,8 +218,20 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
                 ]}
               >
                 <List.Item.Meta
-                  title={<span>📢 {c.title} <Text type="secondary">@{c.username}</Text></span>}
-                  description={<Tag color={STATUS_TAG[c.status].color}>{STATUS_TAG[c.status].text}</Tag>}
+                  title={
+                    <span>
+                      {c.isPrivate ? '🔒' : '📢'} {c.title}{' '}
+                      <Text type="secondary">{c.isPrivate ? `id: ${c.chatId}` : `@${c.username}`}</Text>
+                    </span>
+                  }
+                  description={
+                    <Space size={4}>
+                      <Tag color={c.isPrivate ? 'purple' : 'blue'}>
+                        {c.isPrivate ? '私有' : '公开'}
+                      </Tag>
+                      <Tag color={STATUS_TAG[c.status].color}>{STATUS_TAG[c.status].text}</Tag>
+                    </Space>
+                  }
                 />
               </List.Item>
             )}

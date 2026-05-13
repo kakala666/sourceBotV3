@@ -15,6 +15,7 @@ function serialize(gate: any) {
     promptTemplate: gate.promptTemplate,
     channels: (gate.channels ?? []).map((c: any) => ({
       id: c.id,
+      isPrivate: c.isPrivate,
       username: c.username,
       chatId: c.chatId.toString(),
       title: c.title,
@@ -58,9 +59,9 @@ router.put('/:botId/subscription-gate', async (req, res) => {
 router.post('/:botId/subscription-gate/channels', async (req, res) => {
   try {
     const botId = parseInt(req.params.botId);
-    const { inviteUrl } = req.body ?? {};
+    const { inviteUrl, chatId } = req.body ?? {};
     if (!inviteUrl) return fail(res, '请提供 inviteUrl', 400);
-    await SubscriptionGateService.addChannel(botId, inviteUrl);
+    await SubscriptionGateService.addChannel(botId, inviteUrl, chatId);
     touchReloadSignal();
     const gate = await SubscriptionGateService.getOrCreate(botId);
     return success(res, serialize(gate), 201);
