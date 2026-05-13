@@ -15,7 +15,6 @@
 ## File Structure
 
 **Create:**
-- `packages/server/prisma/migrations/<timestamp>_add_subscription_gate/migration.sql`(prisma 生成)
 - `packages/shared/src/types/subscription-gate.ts` — 接口类型
 - `packages/server/src/services/telegram-channel.ts` — 链接解析 + Telegram 校验
 - `packages/server/src/services/telegram-channel.test.ts` — node:test 脚本式
@@ -115,13 +114,15 @@ model SubscriptionCheckPass {
 }
 ```
 
-- [ ] **Step 2: 跑 migration**
+- [ ] **Step 2: 生成 Prisma Client(本地无 DB,只生成 client;实际 DB 应用在部署时 db push)**
 
 ```bash
-cd packages/server && pnpm prisma:migrate --name add_subscription_gate
+cd packages/server && pnpm prisma:generate
 ```
 
-Expected: 终端打印 `Applying migration \`<timestamp>_add_subscription_gate\``,后续打印 `Your database is now in sync with your schema.`,并自动生成 prisma client。
+Expected: 终端打印 `Generated Prisma Client (v6.x.x) ... in ...ms`,无报错。`@prisma/client` 中包含新 model 的类型定义。
+
+注:本项目用 `prisma db push` 流,无 migrations 目录;DB schema 真正应用在 Task 8 的部署步骤里。
 
 - [ ] **Step 3: 创建 shared types**
 
@@ -183,7 +184,6 @@ Expected: 无报错。
 
 ```bash
 git add packages/server/prisma/schema.prisma \
-        packages/server/prisma/migrations \
         packages/shared/src/types/subscription-gate.ts \
         packages/shared/src/types/index.ts
 git commit -m "feat(db): add subscription gate models and shared types"
@@ -1667,12 +1667,13 @@ Expected: 文件出现 → 2 秒内消失 → bot-runner 日志出现 reload 消
 # 在服务器上
 cd /opt/sourceBotV3 && git pull origin main
 pnpm install
-cd packages/server && pnpm prisma:migrate deploy
+cd packages/server && npx prisma db push   # 应用 schema 到生产 DB(本项目用 db push 流,无 migrations)
+cd packages/server && pnpm prisma:generate
 cd /opt/sourceBotV3 && pnpm build
 pm2 restart api-server bot-runner
 ```
 
-注意:`prisma migrate deploy` 而非 `dev`,生产环境用 deploy 不交互。
+注意:`prisma db push` 直接同步 schema,适合无版本化 migrations 的小团队场景。务必在低流量时段执行;本次仅新增表,无破坏性变更。
 
 ---
 
