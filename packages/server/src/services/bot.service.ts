@@ -24,7 +24,8 @@ export class BotService {
     const bot = await prisma.bot.findUnique({ where: { id } });
     if (!bot) return null;
 
-    const res = await fetch(`https://api.telegram.org/bot${bot.token}/getMe`);
+    const root = process.env.TELEGRAM_API_ROOT || 'https://api.telegram.org';
+    const res = await fetch(`${root}/bot${bot.token}/getMe`);
     const json = (await res.json()) as { ok: boolean; result?: { username?: string }; description?: string };
 
     if (json.ok && json.result?.username) {

@@ -53,7 +53,8 @@ async function callTg<T>(token: string, method: string, params: Record<string, a
       return acc;
     }, {})
   );
-  const url = `https://api.telegram.org/bot${token}/${method}?${qs}`;
+  const root = process.env.TELEGRAM_API_ROOT || 'https://api.telegram.org';
+  const url = `${root}/bot${token}/${method}?${qs}`;
   const res = await fetch(url);
   return (await res.json()) as TgResponse<T>;
 }

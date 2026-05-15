@@ -110,7 +110,8 @@ export class BotManager {
     }
 
     try {
-      const bot = new Bot(token);
+      const apiRoot = process.env.TELEGRAM_API_ROOT || 'https://api.telegram.org';
+      const bot = new Bot(token, { client: { apiRoot } });
       this.registerHandlers(bot, botId);
 
       // 启动 polling（非阻塞）
