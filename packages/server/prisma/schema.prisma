@@ -31,6 +31,7 @@ model Bot {
   fileIds          BotFileId[]
   botUsers         BotUser[]
   subscriptionGate SubscriptionGate?
+  channelGroups    ResourceGroup[]   @relation("ChannelGroupSourceBot")
 }
 
 model InviteLink {
@@ -50,13 +51,18 @@ model InviteLink {
 }
 
 model ResourceGroup {
-  id        Int        @id @default(autoincrement())
-  name      String
-  sortOrder Int        @default(0)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  id            Int        @id @default(autoincrement())
+  name          String
+  sortOrder     Int        @default(0)
+  // 频道激活来源(null = 后台手动创建)
+  channelChatId BigInt?    @unique
+  channelTitle  String?
+  sourceBotId   Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
 
   resources Resource[]
+  sourceBot Bot?       @relation("ChannelGroupSourceBot", fields: [sourceBotId], references: [id], onDelete: SetNull)
 }
 
 model Resource {

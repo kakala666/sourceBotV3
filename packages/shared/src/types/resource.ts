@@ -28,6 +28,10 @@ export interface ResourceGroupInfo {
   id: number;
   name: string;
   sortOrder: number;
+  /** 频道激活来源,null = 后台手动创建 */
+  channelChatId?: string | null;
+  channelTitle?: string | null;
+  sourceBotId?: number | null;
   createdAt: string;
   updatedAt: string;
 }

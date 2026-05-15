@@ -1,19 +1,30 @@
 import prisma from './prisma';
 import type { ResourceGroupCreateInput } from 'shared';
 
+/** channelChatId 是 BigInt,JSON 序列化前转 string */
+function serialize(g: any) {
+  return {
+    ...g,
+    channelChatId: g.channelChatId != null ? g.channelChatId.toString() : null,
+  };
+}
+
 export class ResourceGroupService {
   static async list() {
-    return prisma.resourceGroup.findMany({
+    const groups = await prisma.resourceGroup.findMany({
       orderBy: { sortOrder: 'asc' },
     });
+    return groups.map(serialize);
   }
 
   static async create(data: ResourceGroupCreateInput) {
-    return prisma.resourceGroup.create({ data });
+    const group = await prisma.resourceGroup.create({ data });
+    return serialize(group);
   }
 
   static async update(id: number, data: { name?: string; sortOrder?: number }) {
-    return prisma.resourceGroup.update({ where: { id }, data });
+    const group = await prisma.resourceGroup.update({ where: { id }, data });
+    return serialize(group);
   }
 
   static async delete(id: number) {

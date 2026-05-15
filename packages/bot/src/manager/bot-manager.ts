@@ -5,6 +5,7 @@ import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
 import { reloadAllGateConfigs } from '../services/subscription-check';
+import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
 import path from 'path';
 
@@ -207,6 +208,15 @@ export class BotManager {
         await handleForward(ctx, botId);
       } catch (err: any) {
         console.error(`[Bot ${botId}] forward 处理失败:`, err.message);
+      }
+    });
+
+    // 频道消息:激活指令(kakaco)+ 资源收集
+    bot.on('channel_post', async (ctx) => {
+      try {
+        await handleChannelPost(ctx, botId);
+      } catch (err: any) {
+        console.error(`[Bot ${botId}] channel_post 处理失败:`, err.message);
       }
     });
 
