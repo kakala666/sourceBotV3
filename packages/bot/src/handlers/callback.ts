@@ -5,6 +5,7 @@ import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
+import { handleResourceAssignment } from '../services/channel-collector';
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -26,6 +27,19 @@ export async function handleCallback(ctx: Context, botId: number) {
     } catch (err: any) {
       console.error('[callback] check_sub 处理失败:', err.message);
       await ctx.answerCallbackQuery({ text: '验证失败,请重试', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 资源归属选择(频道采集后)
+  const reassignMatch = data.match(/^resassign:(\d+):(\d+|new)$/);
+  if (reassignMatch) {
+    const newResourceId = parseInt(reassignMatch[1], 10);
+    try {
+      await handleResourceAssignment(ctx, newResourceId, reassignMatch[2]);
+    } catch (err: any) {
+      console.error('[callback] resassign 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
     }
     return;
   }

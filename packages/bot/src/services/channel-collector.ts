@@ -1,4 +1,5 @@
 import type { Context } from 'grammy';
+import { InlineKeyboard } from 'grammy';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../prisma';
@@ -30,6 +31,7 @@ type MediaGroupBufferEntry = {
   caption: string | null;
   items: { file: DownloadedFile; messageId: number }[];
   timer: NodeJS.Timeout;
+  lastCtx: Context;  // debounce 触发时用来发反馈消息
 };
 
 // 媒体组缓冲:key = `${chatId}:${mediaGroupId}`
@@ -196,7 +198,7 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
   if (!file) return;
 
   const resourceType = file.type === 'video' ? 'video' : 'photo';
-  await prisma.resource.create({
+  const resource = await prisma.resource.create({
     data: {
       type: resourceType,
       caption: post.caption || null,
@@ -212,7 +214,12 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
         }],
       },
     },
+    include: { mediaFiles: true },
   });
+
+  await sendAssignmentPrompt(ctx, resource, groupId).catch((err) =>
+    console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
+  );
 }
 
 /* ============== 媒体组缓冲 ============== */
@@ -230,12 +237,14 @@ async function bufferMediaGroupMessage(ctx: Context, botId: number, groupId: num
       caption: null,
       items: [],
       timer: null as unknown as NodeJS.Timeout,
+      lastCtx: ctx,
     };
     mediaGroupBuffer.set(key, entry);
   }
 
   entry.items.push({ file, messageId: post.message_id });
   if (!entry.caption && post.caption) entry.caption = post.caption;
+  entry.lastCtx = ctx;
 
   if (entry.timer) clearTimeout(entry.timer);
   entry.timer = setTimeout(() => {
@@ -250,7 +259,7 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
   // 按 messageId 排序,保证用户看到的顺序
   entry.items.sort((a, b) => a.messageId - b.messageId);
 
-  await prisma.resource.create({
+  const resource = await prisma.resource.create({
     data: {
       type: 'media_group',
       caption: entry.caption,
@@ -266,5 +275,141 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
         })),
       },
     },
+    include: { mediaFiles: true },
   });
+
+  await sendAssignmentPrompt(entry.lastCtx, resource, entry.resourceGroupId).catch((err) =>
+    console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
+  );
+}
+
+/* ============== 反馈消息 + 归属选择键盘 ============== */
+
+/**
+ * 在频道里发反馈消息:
+ *   "✅ 已收录 · N 图 · M 视频 · 有/无描述"
+ * 附带 N+1 个序号按钮:
+ *   1..N 合并到该 group 中已有的第 i 个 Resource
+ *   ✨ 作为新条目(no-op,默认不点也是新条目)
+ */
+async function sendAssignmentPrompt(
+  ctx: Context,
+  newResource: { id: number; caption: string | null; mediaFiles: { type: string }[] },
+  groupId: number,
+) {
+  let photoCount = 0, videoCount = 0;
+  for (const mf of newResource.mediaFiles) {
+    if (mf.type === 'video') videoCount++;
+    else photoCount++;
+  }
+  const hasCaption = !!newResource.caption;
+
+  // group 中已有 Resource(排除自己,按 createdAt 升序对应"第 1, 第 2, ...")
+  const others = await prisma.resource.findMany({
+    where: { groupId, id: { not: newResource.id } },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+
+  const parts: string[] = ['✅ 已收录'];
+  if (photoCount > 0) parts.push(`${photoCount} 图`);
+  if (videoCount > 0) parts.push(`${videoCount} 视频`);
+  parts.push(hasCaption ? '有描述' : '无描述');
+  const text = `${parts.join(' · ')}\n\n请选择归属(默认作为新条目):`;
+
+  const kb = new InlineKeyboard();
+  for (let i = 0; i < others.length; i++) {
+    kb.text(`${i + 1}`, `resassign:${newResource.id}:${others[i].id}`);
+    if ((i + 1) % 5 === 0) kb.row();
+  }
+  if (others.length % 5 !== 0) kb.row();
+  kb.text(`✨ 新条目 (${others.length + 1})`, `resassign:${newResource.id}:new`);
+
+  await ctx.reply(text, { reply_markup: kb });
+}
+
+/* ============== 处理归属选择 callback ============== */
+
+/**
+ * 处理 resassign:{newId}:{target} callback。
+ * target = 'new':仅清空键盘,标记"作为新条目"
+ * target = 数字 id:把 newResource 的 mediaFiles 转移到目标 Resource,删除空壳
+ */
+export async function handleResourceAssignment(
+  ctx: Context,
+  newResourceId: number,
+  target: string,
+) {
+  const newRes = await prisma.resource.findUnique({
+    where: { id: newResourceId },
+    include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+  });
+  if (!newRes) {
+    await ctx.answerCallbackQuery({ text: '资源已不存在', show_alert: true }).catch(() => {});
+    return;
+  }
+
+  if (target === 'new') {
+    await ctx.answerCallbackQuery({ text: '✓ 已确认为新条目' }).catch(() => {});
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
+    return;
+  }
+
+  const targetId = parseInt(target, 10);
+  if (!Number.isFinite(targetId) || targetId === newRes.id) {
+    await ctx.answerCallbackQuery({ text: '无效的归属', show_alert: true }).catch(() => {});
+    return;
+  }
+
+  const targetRes = await prisma.resource.findUnique({
+    where: { id: targetId },
+    include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+  });
+  if (!targetRes) {
+    await ctx.answerCallbackQuery({ text: '目标资源已不存在', show_alert: true }).catch(() => {});
+    return;
+  }
+  if (targetRes.groupId !== newRes.groupId) {
+    await ctx.answerCallbackQuery({ text: '不能跨分类合并', show_alert: true }).catch(() => {});
+    return;
+  }
+
+  const targetMaxSort = targetRes.mediaFiles.reduce(
+    (m, mf) => (mf.sortOrder > m ? mf.sortOrder : m),
+    -1,
+  );
+  const newCount = newRes.mediaFiles.length;
+  const mergedTotal = targetRes.mediaFiles.length + newCount;
+  const mergedType = mergedTotal > 1 ? 'media_group' : targetRes.type;
+  const mergedCaption = targetRes.caption ?? newRes.caption;
+
+  await prisma.$transaction(async (tx) => {
+    for (let i = 0; i < newRes.mediaFiles.length; i++) {
+      await tx.mediaFile.update({
+        where: { id: newRes.mediaFiles[i].id },
+        data: {
+          resourceId: targetRes.id,
+          sortOrder: targetMaxSort + 1 + i,
+        },
+      });
+    }
+    await tx.resource.update({
+      where: { id: targetRes.id },
+      data: { type: mergedType, caption: mergedCaption },
+    });
+    await tx.resource.delete({ where: { id: newRes.id } });
+  });
+
+  // 算目标在 group 中是第几条(按 createdAt 升序),反馈给用户
+  const all = await prisma.resource.findMany({
+    where: { groupId: targetRes.groupId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  });
+  const ordinal = all.findIndex((r) => r.id === targetRes.id) + 1;
+
+  await ctx.answerCallbackQuery({
+    text: `✓ 已合并到第 ${ordinal} 条`,
+  }).catch(() => {});
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
 }
