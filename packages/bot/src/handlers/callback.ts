@@ -68,16 +68,48 @@ export async function handleCallback(ctx: Context, botId: number) {
     return;
   }
 
-  // 展开当前页的隐藏 mediaFile
+  // 展开当前页的隐藏 mediaFile(先校验订阅)
   const revealMatch = data.match(/^reveal:(\d+):(\d+)$/);
   if (revealMatch) {
     const sessionId = parseInt(revealMatch[1], 10);
     const currentIndex = parseInt(revealMatch[2], 10);
     try {
       await ctx.answerCallbackQuery();
+      const session = await prisma.userSession.findUnique({
+        where: { id: sessionId },
+        include: { botUser: true },
+      });
+      if (!session) return;
+      const gateResult = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+      if (!gateResult.ok) {
+        const config = getGateConfig(botId);
+        await sendSubscriptionPrompt(
+          ctx,
+          config?.promptTemplate,
+          sessionId,
+          currentIndex,
+          gateResult.missing,
+          'check_reveal',
+        );
+        return;
+      }
       await processReveal(ctx, botId, sessionId, currentIndex);
     } catch (err: any) {
       console.error('[callback] reveal 处理失败:', err.message);
+    }
+    return;
+  }
+
+  // 展开请求的订阅复核
+  const checkRevealMatch = data.match(/^check_reveal:(\d+):(\d+)$/);
+  if (checkRevealMatch) {
+    const sessionId = parseInt(checkRevealMatch[1], 10);
+    const currentIndex = parseInt(checkRevealMatch[2], 10);
+    try {
+      await handleRevealRecheck(ctx, botId, sessionId, currentIndex);
+    } catch (err: any) {
+      console.error('[callback] check_reveal 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '验证失败,请重试', show_alert: true }).catch(() => {});
     }
     return;
   }
@@ -323,4 +355,38 @@ async function handleSubscriptionRecheck(
   } finally {
     processingSet.delete(sessionId);
   }
+}
+
+/**
+ * 处理「展开更多」的订阅复核 check_reveal:{sessionId}:{currentIndex}
+ * 通过则删除订阅提示并直接展开隐藏部分。
+ */
+async function handleRevealRecheck(
+  ctx: Context,
+  botId: number,
+  sessionId: number,
+  currentIndex: number,
+) {
+  const session = await prisma.userSession.findUnique({
+    where: { id: sessionId },
+    include: { botUser: true },
+  });
+  if (!session) {
+    await ctx.answerCallbackQuery({ text: '会话已失效', show_alert: true });
+    return;
+  }
+
+  const result = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+  if (!result.ok) {
+    await ctx.answerCallbackQuery({
+      text: '还有未订阅的频道,请检查后再试',
+      show_alert: true,
+    });
+    return;
+  }
+
+  await ctx.answerCallbackQuery({ text: '✅ 验证通过' });
+  await ctx.deleteMessage().catch(() => {});
+
+  await processReveal(ctx, botId, sessionId, currentIndex);
 }

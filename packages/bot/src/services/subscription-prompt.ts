@@ -17,13 +17,14 @@ export function renderPromptText(template: string | null | undefined, missing: M
 export function buildPromptKeyboard(
   missing: MissingChannel[],
   sessionId: number,
-  nextIndex: number
+  nextIndex: number,
+  callbackPrefix: string = 'check_sub',
 ): InlineKeyboard {
   const kb = new InlineKeyboard();
   for (const c of missing) {
     kb.url(`📢 ${c.title}`, c.inviteUrl).row();
   }
-  kb.text('✅ 我已完成', `check_sub:${sessionId}:${nextIndex}`);
+  kb.text('✅ 我已完成', `${callbackPrefix}:${sessionId}:${nextIndex}`);
   return kb;
 }
 
@@ -32,9 +33,10 @@ export async function sendSubscriptionPrompt(
   template: string | null | undefined,
   sessionId: number,
   nextIndex: number,
-  missing: MissingChannel[]
+  missing: MissingChannel[],
+  callbackPrefix: string = 'check_sub',
 ) {
   const text = renderPromptText(template, missing);
-  const reply_markup = buildPromptKeyboard(missing, sessionId, nextIndex);
+  const reply_markup = buildPromptKeyboard(missing, sessionId, nextIndex, callbackPrefix);
   await ctx.reply(text, { reply_markup });
 }
