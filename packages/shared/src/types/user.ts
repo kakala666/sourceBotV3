@@ -23,6 +23,9 @@ export interface BotUserLookupResult {
   inviteLink: { id: number; name: string; code: string };
 }
 
+/** /api/users/lookup 响应:不存在则为 null;多条匹配只返回 firstSeenAt 最新一条 */
+export type BotUserLookupResponse = BotUserLookupResult | null;
+
 export interface StatsOverview {
   todayNewUsers: number;
   totalUsers: number;

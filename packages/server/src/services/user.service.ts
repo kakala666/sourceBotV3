@@ -50,11 +50,11 @@ export class UserService {
     };
   }
 
-  static async lookupByTelegramId(telegramId: bigint, botId?: number): Promise<BotUserLookupResult[]> {
+  static async lookupByTelegramId(telegramId: bigint, botId?: number): Promise<BotUserLookupResult | null> {
     const where: any = { telegramId };
     if (botId !== undefined) where.botId = botId;
 
-    const users = await prisma.botUser.findMany({
+    const u = await prisma.botUser.findFirst({
       where,
       include: {
         bot: { select: { id: true, name: true } },
@@ -63,7 +63,9 @@ export class UserService {
       orderBy: { firstSeenAt: 'desc' },
     });
 
-    return users.map((u) => ({
+    if (!u) return null;
+
+    return {
       id: u.id,
       telegramId: u.telegramId.toString(),
       firstName: u.firstName,
@@ -73,6 +75,6 @@ export class UserService {
       lastSeenAt: u.lastSeenAt.toISOString(),
       bot: u.bot,
       inviteLink: u.inviteLink,
-    }));
+    };
   }
 }

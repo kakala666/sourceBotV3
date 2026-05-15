@@ -4,9 +4,9 @@ import { authMiddleware } from '../middleware/auth';
 import { success, fail } from '../utils/response';
 
 const router: IRouter = Router();
-router.use(authMiddleware);
 
-router.get('/', async (req, res) => {
+// /lookup 是免验证的公开接口;其他路由仍需 authMiddleware
+router.get('/', authMiddleware, async (req, res) => {
   try {
     const { page, pageSize, search, botId, linkId } = req.query;
     const result = await UserService.list({
