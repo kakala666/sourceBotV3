@@ -65,12 +65,20 @@ async function sendFirstResource(
 
   const totalContent = contentBindings.length;
 
+  // 隐藏 mediaFile 不发,有隐藏的就在键盘加「🔽 展开更多」(currentIndex=0)
+  const allMediaFiles = binding.resource.mediaFiles;
+  const visibleMediaFiles = allMediaFiles.filter((mf: any) => !mf.isHidden);
+  const hasHidden = visibleMediaFiles.length < allMediaFiles.length;
+  const filteredResource = { ...binding.resource, mediaFiles: visibleMediaFiles };
+  const revealInfo = hasHidden ? { sessionId, currentIndex: 0 } : null;
+
+  const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+
   // 如果只有一条资源，发完即结束
   if (totalContent <= 1) {
-    const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo);
     try {
-      await sendResource(ctx, botId, binding.resource, keyboard);
+      await sendResource(ctx, botId, filteredResource, keyboard);
     } catch (err: any) {
       console.error('[start] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -82,10 +90,9 @@ async function sendFirstResource(
   }
 
   // 多条资源，带翻页按钮
-  const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1);
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo);
   try {
-    await sendResource(ctx, botId, binding.resource, keyboard);
+    await sendResource(ctx, botId, filteredResource, keyboard);
   } catch (err: any) {
     console.error('[start] 发送资源失败:', err.message);
     // 发送失败时仍然提供翻页键盘，让用户可以跳到下一页
