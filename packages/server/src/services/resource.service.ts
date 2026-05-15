@@ -9,6 +9,15 @@ const uploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.resolve(__dirname, '../../../uploads');
 
+/** group 含 BigInt channelChatId,JSON 序列化前转 string */
+function serializeGroup(g: any) {
+  if (!g) return g;
+  return {
+    ...g,
+    channelChatId: g.channelChatId != null ? g.channelChatId.toString() : null,
+  };
+}
+
 export class ResourceService {
   static async list(params: {
     page?: number;
@@ -39,8 +48,10 @@ export class ResourceService {
       prisma.resource.count({ where }),
     ]);
 
+    const serialized = items.map((r: any) => ({ ...r, group: serializeGroup(r.group) }));
+
     return {
-      items: items as unknown as ResourceInfo[],
+      items: serialized as unknown as ResourceInfo[],
       total,
       page,
       pageSize,
