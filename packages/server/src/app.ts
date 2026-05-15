@@ -1,6 +1,12 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// 让 res.json 能序列化 BigInt(默认会抛 TypeError)。
+// 适用于所有 schema 中 BigInt 字段(telegramId / channelChatId / chatId 等)。
+(BigInt.prototype as any).toJSON = function () {
+  return this.toString();
+};
+
 import express, { type Express } from 'express';
 import cors from 'cors';
 import path from 'path';
