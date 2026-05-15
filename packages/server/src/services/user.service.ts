@@ -1,6 +1,6 @@
 import prisma from './prisma';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from 'shared';
-import type { PaginatedResponse, BotUserInfo } from 'shared';
+import type { PaginatedResponse, BotUserInfo, BotUserLookupResult } from 'shared';
 
 export class UserService {
   static async list(params: {
@@ -48,5 +48,31 @@ export class UserService {
       pageSize,
       totalPages: Math.ceil(total / pageSize),
     };
+  }
+
+  static async lookupByTelegramId(telegramId: bigint, botId?: number): Promise<BotUserLookupResult[]> {
+    const where: any = { telegramId };
+    if (botId !== undefined) where.botId = botId;
+
+    const users = await prisma.botUser.findMany({
+      where,
+      include: {
+        bot: { select: { id: true, name: true } },
+        inviteLink: { select: { id: true, name: true, code: true } },
+      },
+      orderBy: { firstSeenAt: 'desc' },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      telegramId: u.telegramId.toString(),
+      firstName: u.firstName,
+      lastName: u.lastName,
+      username: u.username,
+      firstSeenAt: u.firstSeenAt.toISOString(),
+      lastSeenAt: u.lastSeenAt.toISOString(),
+      bot: u.bot,
+      inviteLink: u.inviteLink,
+    }));
   }
 }

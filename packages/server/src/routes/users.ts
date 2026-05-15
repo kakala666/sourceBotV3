@@ -22,4 +22,26 @@ router.get('/', async (req, res) => {
   }
 });
 
+router.get('/lookup', async (req, res) => {
+  try {
+    const { telegramId, botId } = req.query;
+    if (!telegramId) return fail(res, 'telegramId 必填', 400);
+
+    let tgId: bigint;
+    try {
+      tgId = BigInt(String(telegramId).trim());
+    } catch {
+      return fail(res, 'telegramId 必须是数字', 400);
+    }
+
+    const botIdNum = botId ? parseInt(botId as string) : undefined;
+    if (botId && Number.isNaN(botIdNum)) return fail(res, 'botId 必须是数字', 400);
+
+    const result = await UserService.lookupByTelegramId(tgId, botIdNum);
+    return success(res, result);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
 export default router;

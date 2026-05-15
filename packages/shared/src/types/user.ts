@@ -11,6 +11,18 @@ export interface BotUserInfo {
   lastSeenAt: string;
 }
 
+export interface BotUserLookupResult {
+  id: number;
+  telegramId: string;
+  firstName: string | null;
+  lastName: string | null;
+  username: string | null;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  bot: { id: number; name: string };
+  inviteLink: { id: number; name: string; code: string };
+}
+
 export interface StatsOverview {
   todayNewUsers: number;
   totalUsers: number;
