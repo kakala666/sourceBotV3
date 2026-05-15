@@ -3,6 +3,7 @@ import { InlineKeyboard } from 'grammy';
 import fs from 'fs';
 import path from 'path';
 import prisma from '../prisma';
+import { sendResource } from './sender';
 
 /** 激活指令(精确匹配,trim 后) */
 export const ACTIVATION_COMMAND = 'kakaco';
@@ -337,6 +338,7 @@ async function sendAssignmentPrompt(
  */
 export async function handleResourceAssignment(
   ctx: Context,
+  botId: number,
   newResourceId: number,
   target: string,
 ) {
@@ -349,67 +351,149 @@ export async function handleResourceAssignment(
     return;
   }
 
+  // 决定最终生效的 Resource id
+  let finalResourceId: number;
+
   if (target === 'new') {
+    finalResourceId = newRes.id;
     await ctx.answerCallbackQuery({ text: '✓ 已确认为新条目' }).catch(() => {});
     await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
-    return;
+  } else {
+    const targetId = parseInt(target, 10);
+    if (!Number.isFinite(targetId) || targetId === newRes.id) {
+      await ctx.answerCallbackQuery({ text: '无效的归属', show_alert: true }).catch(() => {});
+      return;
+    }
+
+    const targetRes = await prisma.resource.findUnique({
+      where: { id: targetId },
+      include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!targetRes) {
+      await ctx.answerCallbackQuery({ text: '目标资源已不存在', show_alert: true }).catch(() => {});
+      return;
+    }
+    if (targetRes.groupId !== newRes.groupId) {
+      await ctx.answerCallbackQuery({ text: '不能跨分类合并', show_alert: true }).catch(() => {});
+      return;
+    }
+
+    const targetMaxSort = targetRes.mediaFiles.reduce(
+      (m, mf) => (mf.sortOrder > m ? mf.sortOrder : m),
+      -1,
+    );
+    const newCount = newRes.mediaFiles.length;
+    const mergedTotal = targetRes.mediaFiles.length + newCount;
+    const mergedType = mergedTotal > 1 ? 'media_group' : targetRes.type;
+    const mergedCaption = targetRes.caption ?? newRes.caption;
+
+    await prisma.$transaction(async (tx) => {
+      for (let i = 0; i < newRes.mediaFiles.length; i++) {
+        await tx.mediaFile.update({
+          where: { id: newRes.mediaFiles[i].id },
+          data: {
+            resourceId: targetRes.id,
+            sortOrder: targetMaxSort + 1 + i,
+          },
+        });
+      }
+      await tx.resource.update({
+        where: { id: targetRes.id },
+        data: { type: mergedType, caption: mergedCaption },
+      });
+      await tx.resource.delete({ where: { id: newRes.id } });
+    });
+
+    finalResourceId = targetRes.id;
+
+    const all = await prisma.resource.findMany({
+      where: { groupId: targetRes.groupId },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
+    const ordinal = all.findIndex((r) => r.id === targetRes.id) + 1;
+
+    await ctx.answerCallbackQuery({ text: `✓ 已合并到第 ${ordinal} 条` }).catch(() => {});
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
   }
 
-  const targetId = parseInt(target, 10);
-  if (!Number.isFinite(targetId) || targetId === newRes.id) {
-    await ctx.answerCallbackQuery({ text: '无效的归属', show_alert: true }).catch(() => {});
+  // 选完后:把最终 Resource 的全部 mediaFiles 发到频道供员工预览,然后发可见性键盘
+  try {
+    const finalRes = await prisma.resource.findUnique({
+      where: { id: finalResourceId },
+      include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+    });
+    if (!finalRes) return;
+    // sender.sendResource 处理单文件/媒体组(>10 自动分批)
+    await sendResource(ctx, botId, {
+      type: finalRes.type,
+      caption: finalRes.caption,
+      mediaFiles: finalRes.mediaFiles,
+    });
+    await sendVisibilityKeyboard(ctx, finalRes);
+  } catch (err: any) {
+    console.error('[channel-collector] 预览+可见性键盘失败:', err.message);
+  }
+}
+
+/* ============== 可见性键盘 ============== */
+
+function buildVisibilityKeyboard(resource: { id: number; mediaFiles: { id: number; sortOrder: number; isHidden: boolean }[] }) {
+  const kb = new InlineKeyboard();
+  // 按 sortOrder 排序后展示序号 1..N
+  const sorted = [...resource.mediaFiles].sort((a, b) => a.sortOrder - b.sortOrder);
+  for (let i = 0; i < sorted.length; i++) {
+    const mf = sorted[i];
+    const label = `${i + 1}:${mf.isHidden ? '隐藏' : '公开'}`;
+    kb.text(label, `medvis:${resource.id}:${mf.id}`);
+    if ((i + 1) % 4 === 0) kb.row();
+  }
+  if (sorted.length % 4 !== 0) kb.row();
+  kb.text('💾 保存', `medsave:${resource.id}`);
+  return kb;
+}
+
+async function sendVisibilityKeyboard(ctx: Context, resource: { id: number; mediaFiles: { id: number; sortOrder: number; isHidden: boolean }[] }) {
+  if (resource.mediaFiles.length === 0) return;
+  const kb = buildVisibilityKeyboard(resource);
+  await ctx.reply('请选择各项的可见性(默认公开),完成后点保存:', { reply_markup: kb });
+}
+
+/* ============== 处理 visibility callback ============== */
+
+/** 切换某个 MediaFile 的 isHidden,并刷新键盘文字 */
+export async function handleMediaVisibilityToggle(
+  ctx: Context,
+  resourceId: number,
+  mediaFileId: number,
+) {
+  const mf = await prisma.mediaFile.findUnique({ where: { id: mediaFileId } });
+  if (!mf || mf.resourceId !== resourceId) {
+    await ctx.answerCallbackQuery({ text: '项不存在', show_alert: true }).catch(() => {});
     return;
   }
+  const nextHidden = !mf.isHidden;
+  await prisma.mediaFile.update({
+    where: { id: mediaFileId },
+    data: { isHidden: nextHidden },
+  });
 
-  const targetRes = await prisma.resource.findUnique({
-    where: { id: targetId },
+  const resource = await prisma.resource.findUnique({
+    where: { id: resourceId },
     include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
   });
-  if (!targetRes) {
-    await ctx.answerCallbackQuery({ text: '目标资源已不存在', show_alert: true }).catch(() => {});
+  if (!resource) {
+    await ctx.answerCallbackQuery({ text: '资源已不存在', show_alert: true }).catch(() => {});
     return;
   }
-  if (targetRes.groupId !== newRes.groupId) {
-    await ctx.answerCallbackQuery({ text: '不能跨分类合并', show_alert: true }).catch(() => {});
-    return;
-  }
+  const kb = buildVisibilityKeyboard(resource);
 
-  const targetMaxSort = targetRes.mediaFiles.reduce(
-    (m, mf) => (mf.sortOrder > m ? mf.sortOrder : m),
-    -1,
-  );
-  const newCount = newRes.mediaFiles.length;
-  const mergedTotal = targetRes.mediaFiles.length + newCount;
-  const mergedType = mergedTotal > 1 ? 'media_group' : targetRes.type;
-  const mergedCaption = targetRes.caption ?? newRes.caption;
+  await ctx.answerCallbackQuery({ text: nextHidden ? '已设隐藏' : '已设公开' }).catch(() => {});
+  await ctx.editMessageReplyMarkup({ reply_markup: kb }).catch(() => {});
+}
 
-  await prisma.$transaction(async (tx) => {
-    for (let i = 0; i < newRes.mediaFiles.length; i++) {
-      await tx.mediaFile.update({
-        where: { id: newRes.mediaFiles[i].id },
-        data: {
-          resourceId: targetRes.id,
-          sortOrder: targetMaxSort + 1 + i,
-        },
-      });
-    }
-    await tx.resource.update({
-      where: { id: targetRes.id },
-      data: { type: mergedType, caption: mergedCaption },
-    });
-    await tx.resource.delete({ where: { id: newRes.id } });
-  });
-
-  // 算目标在 group 中是第几条(按 createdAt 升序),反馈给用户
-  const all = await prisma.resource.findMany({
-    where: { groupId: targetRes.groupId },
-    orderBy: { createdAt: 'asc' },
-    select: { id: true },
-  });
-  const ordinal = all.findIndex((r) => r.id === targetRes.id) + 1;
-
-  await ctx.answerCallbackQuery({
-    text: `✓ 已合并到第 ${ordinal} 条`,
-  }).catch(() => {});
+/** 保存:仅清空键盘 */
+export async function handleMediaVisibilitySave(ctx: Context, _resourceId: number) {
+  await ctx.answerCallbackQuery({ text: '✓ 已保存' }).catch(() => {});
   await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
 }

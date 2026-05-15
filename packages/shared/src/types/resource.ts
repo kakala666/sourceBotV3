@@ -22,6 +22,7 @@ export interface MediaFileInfo {
   mimeType: string;
   fileSize: number;
   sortOrder: number;
+  isHidden: boolean;
 }
 
 export interface ResourceGroupInfo {

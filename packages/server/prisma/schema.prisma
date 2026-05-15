@@ -92,6 +92,7 @@ model MediaFile {
   height        Int?
   thumbnailPath String?
   sortOrder     Int      @default(0)
+  isHidden      Boolean  @default(false)
   createdAt     DateTime @default(now())
 
   resource   Resource   @relation(fields: [resourceId], references: [id], onDelete: Cascade)

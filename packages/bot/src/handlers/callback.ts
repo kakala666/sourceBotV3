@@ -5,7 +5,7 @@ import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
-import { handleResourceAssignment } from '../services/channel-collector';
+import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave } from '../services/channel-collector';
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -36,9 +36,33 @@ export async function handleCallback(ctx: Context, botId: number) {
   if (reassignMatch) {
     const newResourceId = parseInt(reassignMatch[1], 10);
     try {
-      await handleResourceAssignment(ctx, newResourceId, reassignMatch[2]);
+      await handleResourceAssignment(ctx, botId, newResourceId, reassignMatch[2]);
     } catch (err: any) {
       console.error('[callback] resassign 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 媒体可见性切换
+  const visToggleMatch = data.match(/^medvis:(\d+):(\d+)$/);
+  if (visToggleMatch) {
+    try {
+      await handleMediaVisibilityToggle(ctx, parseInt(visToggleMatch[1], 10), parseInt(visToggleMatch[2], 10));
+    } catch (err: any) {
+      console.error('[callback] medvis 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 媒体可见性保存
+  const visSaveMatch = data.match(/^medsave:(\d+)$/);
+  if (visSaveMatch) {
+    try {
+      await handleMediaVisibilitySave(ctx, parseInt(visSaveMatch[1], 10));
+    } catch (err: any) {
+      console.error('[callback] medsave 处理失败:', err.message);
       await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
     }
     return;
