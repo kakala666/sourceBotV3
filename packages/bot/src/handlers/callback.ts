@@ -68,6 +68,20 @@ export async function handleCallback(ctx: Context, botId: number) {
     return;
   }
 
+  // 展开当前页的隐藏 mediaFile
+  const revealMatch = data.match(/^reveal:(\d+):(\d+)$/);
+  if (revealMatch) {
+    const sessionId = parseInt(revealMatch[1], 10);
+    const currentIndex = parseInt(revealMatch[2], 10);
+    try {
+      await ctx.answerCallbackQuery();
+      await processReveal(ctx, botId, sessionId, currentIndex);
+    } catch (err: any) {
+      console.error('[callback] reveal 处理失败:', err.message);
+    }
+    return;
+  }
+
   // 解析翻页回调
   const match = data.match(/^next:(\d+):(\d+)$/);
   if (!match) {
@@ -175,14 +189,21 @@ async function processNextPage(
   const binding = contentBindings[nextIndex];
   if (!binding?.resource) return;
 
+  // 隐藏 mediaFile 默认不发,有隐藏的就在键盘加"展开更多"
+  const allMediaFiles = binding.resource.mediaFiles;
+  const visibleMediaFiles = allMediaFiles.filter((mf: any) => !mf.isHidden);
+  const hasHidden = visibleMediaFiles.length < allMediaFiles.length;
+  const filteredResource = { ...binding.resource, mediaFiles: visibleMediaFiles };
+  const revealInfo = hasHidden ? { sessionId, currentIndex: nextIndex } : null;
+
   const isLast = nextIndex >= totalContent - 1;
 
   if (isLast) {
-    // 最后一条资源，不带翻页按钮，但可能有内容按钮
+    // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo);
     try {
-      await sendResource(ctx, botId, binding.resource, keyboard);
+      await sendResource(ctx, botId, filteredResource, keyboard);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -192,16 +213,76 @@ async function processNextPage(
     const endContent = await getEndContent();
     await sendEndContent(ctx, endContent);
   } else {
-    // 还有更多资源，带翻页按钮
+    // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1);
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo);
     try {
-      await sendResource(ctx, botId, binding.resource, keyboard);
+      await sendResource(ctx, botId, filteredResource, keyboard);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
       const fallbackKb = buildPageKeyboard(sessionId, nextIndex + 1);
       await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
     }
+  }
+}
+
+/**
+ * 处理「🔽 展开更多」:发送当前页的 hidden mediaFiles(不带 caption,不带 keyboard),
+ * 并把原消息上的「展开更多」按钮去掉防重复点击。
+ */
+async function processReveal(
+  ctx: Context,
+  _botId: number,
+  sessionId: number,
+  currentIndex: number,
+) {
+  const session = await prisma.userSession.findUnique({
+    where: { id: sessionId },
+    include: { botUser: true },
+  });
+  if (!session) return;
+
+  const contentBindings = await loadContentBindings(session.botUser.inviteLinkId);
+  const binding = contentBindings[currentIndex];
+  if (!binding?.resource) return;
+
+  const hiddenMediaFiles = binding.resource.mediaFiles.filter((mf: any) => mf.isHidden);
+  if (hiddenMediaFiles.length === 0) return;
+
+  // type 按数量决定:多个走 media_group,单个走 photo/video
+  let revealType: string;
+  if (hiddenMediaFiles.length > 1) {
+    revealType = 'media_group';
+  } else {
+    revealType = hiddenMediaFiles[0].type === 'video' ? 'video' : 'photo';
+  }
+
+  const revealResource = {
+    type: revealType,
+    caption: null,
+    mediaFiles: hiddenMediaFiles,
+  };
+
+  // 发隐藏部分,不带 keyboard
+  try {
+    await sendResource(ctx, _botId, revealResource);
+  } catch (err: any) {
+    console.error('[callback] reveal 发送失败:', err.message);
+  }
+
+  // 从原消息键盘里移除「展开更多」按钮,保留其他(下一页等)
+  try {
+    const origMarkup = ctx.callbackQuery?.message?.reply_markup;
+    if (origMarkup?.inline_keyboard) {
+      const filtered = origMarkup.inline_keyboard
+        .map((row) => row.filter((btn: any) => !(typeof btn.callback_data === 'string' && btn.callback_data.startsWith('reveal:'))))
+        .filter((row) => row.length > 0);
+      await ctx.editMessageReplyMarkup({
+        reply_markup: { inline_keyboard: filtered } as any,
+      });
+    }
+  } catch (err: any) {
+    // 编辑失败不影响主流程(可能是消息已删除/超时等)
   }
 }
 

@@ -250,17 +250,21 @@ function buildPageKeyboard(sessionId: number, nextIndex: number): InlineKeyboard
 }
 
 /**
- * 构建内容键盘（内容按钮 + 可选翻页按钮）
+ * 构建内容键盘（内容按钮 + 可选「展开更多」 + 可选翻页按钮）
+ * revealInfo:若该资源有隐藏的 mediaFile,传入 { sessionId, currentIndex } 即可在
+ *           翻页按钮上方多加一个「🔽 展开更多」按钮。
  */
 function buildContentKeyboard(
   contentButtons?: { text: string; url: string }[] | null,
   sessionId?: number,
   nextIndex?: number,
+  revealInfo?: { sessionId: number; currentIndex: number } | null,
 ): InlineKeyboard | undefined {
   const hasContentBtns = contentButtons && contentButtons.length > 0;
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
+  const hasReveal = !!revealInfo;
 
-  if (!hasContentBtns && !hasPageBtn) return undefined;
+  if (!hasContentBtns && !hasPageBtn && !hasReveal) return undefined;
 
   const keyboard = new InlineKeyboard();
 
@@ -271,7 +275,12 @@ function buildContentKeyboard(
     }
   }
 
-  // 翻页按钮在下方
+  // 「展开更多」在翻页按钮上方
+  if (hasReveal) {
+    keyboard.text('🔽 展开更多', `reveal:${revealInfo!.sessionId}:${revealInfo!.currentIndex}`).row();
+  }
+
+  // 翻页按钮
   if (hasPageBtn) {
     keyboard.text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
   }
