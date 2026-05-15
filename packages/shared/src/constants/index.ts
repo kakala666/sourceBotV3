@@ -1,8 +1,8 @@
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
 export const DEFAULT_AD_DISPLAY_SECONDS = 5;
-export const MAX_PHOTO_SIZE = 10 * 1024 * 1024; // 10MB
-export const MAX_VIDEO_SIZE = 50 * 1024 * 1024; // 50MB
+export const MAX_PHOTO_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
+export const MAX_VIDEO_SIZE = 2 * 1024 * 1024 * 1024; // 2GB
 export const ALLOWED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/gif'];
 export const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/quicktime'];
 export const JWT_EXPIRES_IN = '24h';

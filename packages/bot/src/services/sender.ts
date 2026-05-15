@@ -142,13 +142,47 @@ async function sendVideo(
   return msg;
 }
 
+/** Telegram sendMediaGroup 单批上限,超过自动分批发送 */
+const MEDIA_GROUP_CHUNK_SIZE = 10;
+
+type MediaFileLike = {
+  id: number; filePath: string; type: string;
+  duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null;
+};
+
 /**
- * 发送媒体组（每个文件独立缓存 file_id）
+ * 发送媒体组(超过 10 个自动分批;单文件批次降级为 sendPhoto/sendVideo)
+ * caption 仅放在第一个批次的第一个文件上。
  */
 async function sendMediaGroup(
   ctx: Context,
   botId: number,
-  mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null }[],
+  mediaFiles: MediaFileLike[],
+  caption?: string | null,
+) {
+  for (let i = 0; i < mediaFiles.length; i += MEDIA_GROUP_CHUNK_SIZE) {
+    const chunk = mediaFiles.slice(i, i + MEDIA_GROUP_CHUNK_SIZE);
+    const batchCaption = i === 0 ? caption : null;
+
+    if (chunk.length === 1) {
+      // 单文件无法用 media group,降级单发(没有 keyboard,因为媒体组本身就不带)
+      const mf = chunk[0];
+      if (mf.type === 'video') {
+        await sendVideo(ctx, botId, mf, batchCaption);
+      } else {
+        await sendPhoto(ctx, botId, mf, batchCaption);
+      }
+    } else {
+      await sendMediaGroupBatch(ctx, botId, chunk, batchCaption);
+    }
+  }
+}
+
+/** 发送单个媒体组批次(2-10 个文件) */
+async function sendMediaGroupBatch(
+  ctx: Context,
+  botId: number,
+  mediaFiles: MediaFileLike[],
   caption?: string | null,
 ) {
   const mediaItems: any[] = [];
@@ -176,7 +210,6 @@ async function sendMediaGroup(
 
   try {
     const messages = await ctx.replyWithMediaGroup(mediaItems);
-    // 仅对本地上传的文件缓存 file_id
     for (const i of uploadedFromLocal) {
       const mf = mediaFiles[i];
       if (!mf) continue;
@@ -185,14 +218,12 @@ async function sendMediaGroup(
     }
     return messages;
   } catch (err: any) {
-    // 非 file_id 错误直接抛出
     if (!isFileIdError(err)) throw err;
 
     console.error('[sender] 媒体组 file_id 失效，清除缓存重试', err.message);
     for (const mf of mediaFiles) {
       await deleteCachedFileId(botId, mf.id);
     }
-    // 重建全部使用本地文件
     const retryItems = mediaFiles.map((mf, i) => {
       const src = new InputFile(getAbsoluteFilePath(mf.filePath));
       const cap = i === 0 ? (caption ?? undefined) : undefined;

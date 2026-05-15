@@ -24,15 +24,14 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const uploadMiddleware = upload.array('files', 10);
+  // 不限制单次上传文件数量;发送时按 10 个/批拆分发送
+  const uploadMiddleware = upload.array('files');
   uploadMiddleware(req, res, async (err: any) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         switch (err.code) {
           case 'LIMIT_FILE_SIZE':
-            return fail(res, '文件大小超过 50MB 限制', 413);
-          case 'LIMIT_FILE_COUNT':
-            return fail(res, '最多上传 10 个文件', 400);
+            return fail(res, '单个文件大小超过 2GB 限制', 413);
           case 'LIMIT_UNEXPECTED_FILE':
             return fail(res, '不支持的文件字段', 400);
           default:
