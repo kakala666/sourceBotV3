@@ -16,9 +16,11 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import prisma from '../src/services/prisma';
 import { getVideoMeta, generateThumbnail } from '../src/utils/video';
 
+// 让 UPLOAD_DIR 始终相对 repo root,而不是当前 cwd
+const repoRoot = path.resolve(__dirname, '../../..');
 const uploadDir = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : path.resolve(__dirname, '../../../uploads');
+  ? path.resolve(repoRoot, process.env.UPLOAD_DIR)
+  : path.resolve(repoRoot, 'uploads');
 
 async function main() {
   const targets = await prisma.mediaFile.findMany({
