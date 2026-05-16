@@ -178,6 +178,22 @@ async function sendMediaGroup(
   }
 }
 
+/** 构建单条 video 的 InputMediaVideo 选项,带流媒体优化与缩略图 */
+function buildVideoOpts(
+  mf: MediaFileLike,
+  itemCaption: string | undefined,
+): any {
+  const opts: any = { supports_streaming: true };
+  if (itemCaption !== undefined) opts.caption = itemCaption;
+  if (mf.duration) opts.duration = mf.duration;
+  if (mf.width) opts.width = mf.width;
+  if (mf.height) opts.height = mf.height;
+  if (mf.thumbnailPath) {
+    opts.thumbnail = new InputFile(getAbsoluteFilePath(mf.thumbnailPath));
+  }
+  return opts;
+}
+
 /** 发送单个媒体组批次(2-10 个文件) */
 async function sendMediaGroupBatch(
   ctx: Context,
@@ -202,7 +218,7 @@ async function sendMediaGroupBatch(
     }
 
     if (mf.type === 'video') {
-      mediaItems.push(InputMediaBuilder.video(source, { caption: itemCaption }));
+      mediaItems.push(InputMediaBuilder.video(source, buildVideoOpts(mf, itemCaption)));
     } else {
       mediaItems.push(InputMediaBuilder.photo(source, { caption: itemCaption }));
     }
@@ -228,7 +244,7 @@ async function sendMediaGroupBatch(
       const src = new InputFile(getAbsoluteFilePath(mf.filePath));
       const cap = i === 0 ? (caption ?? undefined) : undefined;
       return mf.type === 'video'
-        ? InputMediaBuilder.video(src, { caption: cap })
+        ? InputMediaBuilder.video(src, buildVideoOpts(mf, cap))
         : InputMediaBuilder.photo(src, { caption: cap });
     });
     const messages = await ctx.replyWithMediaGroup(retryItems);

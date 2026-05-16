@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import prisma from '../prisma';
 import { sendResource } from './sender';
+import { getVideoMeta, generateThumbnail } from '../utils/video';
 
 /** 激活指令(精确匹配,trim 后) */
 export const ACTIVATION_COMMAND = 'kakaco';
@@ -218,6 +219,9 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
     include: { mediaFiles: true },
   });
 
+  // 异步提取视频元数据 + 缩略图(不阻塞反馈消息)
+  processVideoFilesAsync(resource.mediaFiles);
+
   await sendAssignmentPrompt(ctx, resource, groupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
   );
@@ -279,9 +283,41 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
     include: { mediaFiles: true },
   });
 
+  processVideoFilesAsync(resource.mediaFiles);
+
   await sendAssignmentPrompt(entry.lastCtx, resource, entry.resourceGroupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
   );
+}
+
+/* ============== 异步处理视频元数据 + 缩略图 ============== */
+
+/**
+ * 对 mediaFiles 中的 video 异步提取 duration/width/height + 生成缩略图,
+ * 写回 DB。fire-and-forget,失败仅日志。
+ */
+function processVideoFilesAsync(mediaFiles: { id: number; type: string; filePath: string }[]) {
+  for (const mf of mediaFiles) {
+    if (mf.type !== 'video') continue;
+    processSingleVideoMeta(mf.id, mf.filePath).catch((err) => {
+      console.error(`[channel-collector] 视频 ${mf.id} 元数据提取失败:`, err.message);
+    });
+  }
+}
+
+async function processSingleVideoMeta(mediaFileId: number, fileName: string) {
+  const absPath = path.join(UPLOADS_ROOT, fileName);
+  const meta = await getVideoMeta(absPath);
+  const thumbName = await generateThumbnail(absPath, UPLOADS_ROOT);
+  await prisma.mediaFile.update({
+    where: { id: mediaFileId },
+    data: {
+      duration: meta.duration,
+      width: meta.width,
+      height: meta.height,
+      thumbnailPath: thumbName,
+    },
+  });
 }
 
 /* ============== 反馈消息 + 归属选择键盘 ============== */
