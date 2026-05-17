@@ -64,6 +64,13 @@ export async function getStatsGroupId(): Promise<string> {
 }
 
 /**
+ * 获取「搜索更多资源」按钮跳转链接
+ */
+export async function getSearchMoreUrl(): Promise<string> {
+  return getSystemSetting<string>('searchMoreUrl', 'https://t.me/ssejqr88bot');
+}
+
+/**
  * 获取自动回复文本（未启用或未配置时返回 null）
  */
 export async function getAutoReplyAd(): Promise<string | null> {

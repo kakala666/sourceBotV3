@@ -1,7 +1,7 @@
 import type { Context } from 'grammy';
 import prisma from '../prisma';
 import { upsertBotUser, resetSession } from '../services/session';
-import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent } from '../services/content';
+import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 
 /**
@@ -90,13 +90,14 @@ async function sendFirstResource(
   }
 
   // 多条资源，带翻页按钮
-  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo);
+  const searchMoreUrl = await getSearchMoreUrl();
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl);
   try {
     await sendResource(ctx, botId, filteredResource, keyboard);
   } catch (err: any) {
     console.error('[start] 发送资源失败:', err.message);
     // 发送失败时仍然提供翻页键盘，让用户可以跳到下一页
-    const fallbackKb = buildPageKeyboard(sessionId, 1);
+    const fallbackKb = buildPageKeyboard(sessionId, 1, searchMoreUrl);
     await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
   }
 }

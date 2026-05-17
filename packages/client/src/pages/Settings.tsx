@@ -18,7 +18,8 @@ export default function Settings() {
       setLoading(true);
       try {
         const { data } = await api.get<ApiResponse<SystemSettings>>('/settings');
-        if (data.data) form.setFieldsValue(data.data);
+        const defaults: Partial<SystemSettings> = { searchMoreUrl: 'https://t.me/ssejqr88bot' };
+        if (data.data) form.setFieldsValue({ ...defaults, ...data.data });
       } catch {
         message.error('获取设置失败');
       } finally {
@@ -103,6 +104,18 @@ export default function Settings() {
             name="statsGroupId"
           >
             <Input placeholder="Telegram 群组 ID（可选）" style={{ width: 300 }} />
+          </Form.Item>
+
+          <Form.Item
+            label="「搜索更多资源」按钮链接"
+            name="searchMoreUrl"
+            rules={[
+              { required: true, message: '请输入跳转链接' },
+              { type: 'url', message: '请输入合法的 URL' },
+            ]}
+            extra="翻页按钮上方的「🔍 搜索更多资源」按钮跳转地址,全局唯一"
+          >
+            <Input placeholder="https://t.me/ssejqr88bot" style={{ width: 400 }} />
           </Form.Item>
 
           <Divider>登录验证设置</Divider>

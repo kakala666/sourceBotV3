@@ -260,21 +260,27 @@ async function sendMediaGroupBatch(
 
 /**
  * 构建翻页键盘
+ * 当提供 searchMoreUrl 时,在「下一页」按钮上方插入一行「🔍 搜索更多资源」URL 按钮。
  */
-function buildPageKeyboard(sessionId: number, nextIndex: number): InlineKeyboard {
-  return new InlineKeyboard().text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
+function buildPageKeyboard(sessionId: number, nextIndex: number, searchMoreUrl?: string): InlineKeyboard {
+  const kb = new InlineKeyboard();
+  if (searchMoreUrl) kb.url('🔍 搜索更多资源', searchMoreUrl).row();
+  kb.text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
+  return kb;
 }
 
 /**
- * 构建内容键盘（内容按钮 + 可选「展开更多」 + 可选翻页按钮）
+ * 构建内容键盘（内容按钮 + 可选「展开更多」 + 可选翻页按钮 + 可选「搜索更多」）
  * revealInfo:若该资源有隐藏的 mediaFile,传入 { sessionId, currentIndex } 即可在
  *           翻页按钮上方多加一个「🔽 展开更多」按钮。
+ * searchMoreUrl:仅当存在翻页按钮时生效,在翻页按钮(以及可选的「展开更多」)上方插入跳转按钮。
  */
 function buildContentKeyboard(
   contentButtons?: { text: string; url: string }[] | null,
   sessionId?: number,
   nextIndex?: number,
   revealInfo?: { sessionId: number; currentIndex: number } | null,
+  searchMoreUrl?: string,
 ): InlineKeyboard | undefined {
   const hasContentBtns = contentButtons && contentButtons.length > 0;
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
@@ -291,9 +297,14 @@ function buildContentKeyboard(
     }
   }
 
-  // 「展开更多」在翻页按钮上方
+  // 「展开更多」靠上(与当前页媒体相关的副动作)
   if (hasReveal) {
     keyboard.text('🔽 展开更多', `reveal:${revealInfo!.sessionId}:${revealInfo!.currentIndex}`).row();
+  }
+
+  // 「搜索更多资源」紧贴翻页按钮上方(仅当有翻页按钮时显示)
+  if (hasPageBtn && searchMoreUrl) {
+    keyboard.url('🔍 搜索更多资源', searchMoreUrl).row();
   }
 
   // 翻页按钮

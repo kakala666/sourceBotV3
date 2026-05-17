@@ -15,4 +15,5 @@ export interface SystemSettings {
   autoReplyAd: AutoReplyAdConfig;
   centralAuthEnabled: boolean;
   verifyCodeEnabled: boolean;
+  searchMoreUrl: string;
 }
