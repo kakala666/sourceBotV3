@@ -34,7 +34,16 @@ export class ResourceService {
       where.groupId = params.groupId;
     }
     if (params.search) {
-      where.caption = { contains: params.search, mode: 'insensitive' };
+      const s = params.search.trim();
+      // 纯数字:按 id 精确 OR caption 模糊;否则只 caption 模糊
+      if (/^\d+$/.test(s)) {
+        where.OR = [
+          { id: Number(s) },
+          { caption: { contains: s, mode: 'insensitive' } },
+        ];
+      } else {
+        where.caption = { contains: s, mode: 'insensitive' };
+      }
     }
 
     const [items, total] = await Promise.all([

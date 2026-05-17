@@ -317,6 +317,7 @@ function buildContentKeyboard(
 
 /**
  * 发送资源（根据类型自动选择发送方式）
+ * 传入 resourceId 时,在 caption 开头加「资源{id}」前缀(占一行)。
  */
 export async function sendResource(
   ctx: Context,
@@ -327,8 +328,12 @@ export async function sendResource(
     mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null }[];
   },
   keyboard?: InlineKeyboard,
+  resourceId?: number,
 ) {
-  const { type, caption, mediaFiles } = resource;
+  const { type, mediaFiles } = resource;
+  const caption = resourceId !== undefined
+    ? (resource.caption ? `资源${resourceId}\n${resource.caption}` : `资源${resourceId}`)
+    : resource.caption;
 
   if (!mediaFiles.length) {
     // 无媒体文件，仅发送文字

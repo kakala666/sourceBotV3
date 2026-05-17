@@ -247,7 +247,7 @@ export default function Resources() {
         <div style={{ flex: 1 }}>
           <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
             <Search
-              placeholder="搜索资源"
+              placeholder="搜索资源(支持 ID 精确匹配 / 文案模糊)"
               allowClear
               onSearch={(v) => { setSearch(v); setPage(1); }}
               style={{ width: 300 }}
@@ -324,7 +324,7 @@ export default function Resources() {
         open={groupModalOpen}
         onOk={handleGroupSubmit}
         onCancel={() => { setGroupModalOpen(false); setEditingGroup(null); groupForm.resetFields(); }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={groupForm} layout="vertical">
           <Form.Item name="name" label="分组名称" rules={[{ required: true, message: '请输入分组名称' }]}>
@@ -339,7 +339,7 @@ export default function Resources() {
         open={editResourceModalOpen}
         onOk={handleEditResource}
         onCancel={() => { setEditResourceModalOpen(false); setEditingResource(null); editResourceForm.resetFields(); }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={editResourceForm} layout="vertical">
           <Form.Item name="caption" label="文案">
@@ -358,7 +358,7 @@ export default function Resources() {
         open={uploadModalOpen}
         onOk={handleUpload}
         onCancel={() => { if (!uploading) { setUploadModalOpen(false); uploadForm.resetFields(); } }}
-        destroyOnClose
+        destroyOnHidden
         okButtonProps={{ loading: uploading, disabled: uploading }}
         cancelButtonProps={{ disabled: uploading }}
       >

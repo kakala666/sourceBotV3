@@ -78,7 +78,7 @@ async function sendFirstResource(
   if (totalContent <= 1) {
     const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo);
     try {
-      await sendResource(ctx, botId, filteredResource, keyboard);
+      await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
     } catch (err: any) {
       console.error('[start] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -93,7 +93,7 @@ async function sendFirstResource(
   const searchMoreUrl = await getSearchMoreUrl();
   const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl);
   try {
-    await sendResource(ctx, botId, filteredResource, keyboard);
+    await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
   } catch (err: any) {
     console.error('[start] 发送资源失败:', err.message);
     // 发送失败时仍然提供翻页键盘，让用户可以跳到下一页
