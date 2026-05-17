@@ -283,7 +283,11 @@ function buildContentKeyboard(
   searchMoreUrl?: string,
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
 ): InlineKeyboard | undefined {
-  const hasContentBtns = contentButtons && contentButtons.length > 0;
+  // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
+  const validContentButtons = (contentButtons ?? []).filter(
+    (b) => b && typeof b.text === 'string' && b.text.trim() && typeof b.url === 'string' && b.url.trim(),
+  );
+  const hasContentBtns = validContentButtons.length > 0;
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
   const hasReveal = !!revealInfo;
   const hasFav = !!favoriteInfo;
@@ -294,8 +298,8 @@ function buildContentKeyboard(
 
   // 内容按钮在上方
   if (hasContentBtns) {
-    for (const btn of contentButtons) {
-      keyboard.url(btn.text, btn.url).row();
+    for (const btn of validContentButtons) {
+      keyboard.url(btn.text.trim(), btn.url.trim()).row();
     }
   }
 
@@ -383,13 +387,15 @@ export async function sendAd(
   },
   adDisplaySeconds: number,
 ) {
-  // 构建广告内联按钮
+  // 构建广告内联按钮(过滤空 text/url,避免 Telegram 拒收 inline keyboard)
   let adKeyboard: InlineKeyboard | undefined;
-  const buttons = adBinding.buttons as { text: string; url: string }[] | null;
-  if (buttons?.length) {
+  const buttons = (adBinding.buttons as { text: string; url: string }[] | null)?.filter(
+    (b) => b && typeof b.text === 'string' && b.text.trim() && typeof b.url === 'string' && b.url.trim(),
+  );
+  if (buttons && buttons.length > 0) {
     adKeyboard = new InlineKeyboard();
     for (const btn of buttons) {
-      adKeyboard.url(btn.text, btn.url).row();
+      adKeyboard.url(btn.text.trim(), btn.url.trim()).row();
     }
   }
 
@@ -408,10 +414,13 @@ export async function sendEndContent(
   endContent: { text: string; buttons?: { text: string; url: string }[] },
 ) {
   let keyboard: InlineKeyboard | undefined;
-  if (endContent.buttons?.length) {
+  const buttons = endContent.buttons?.filter(
+    (b) => b && typeof b.text === 'string' && b.text.trim() && typeof b.url === 'string' && b.url.trim(),
+  );
+  if (buttons && buttons.length > 0) {
     keyboard = new InlineKeyboard();
-    for (const btn of endContent.buttons) {
-      keyboard.url(btn.text, btn.url).row();
+    for (const btn of buttons) {
+      keyboard.url(btn.text.trim(), btn.url.trim()).row();
     }
   }
   await ctx.reply(endContent.text, keyboard ? { reply_markup: keyboard } : undefined);
