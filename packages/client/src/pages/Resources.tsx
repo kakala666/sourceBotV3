@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, EditOutlined, UploadOutlined,
-  FileImageOutlined, VideoCameraOutlined, AppstoreOutlined,
+  FileImageOutlined, VideoCameraOutlined, AppstoreOutlined, TagsOutlined,
 } from '@ant-design/icons';
 import type {
   ResourceInfo, ResourceGroupInfo, ResourceGroupCreateInput,
@@ -36,6 +36,33 @@ export default function Resources() {
   const [uploadForm] = Form.useForm();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+
+  // 标签编辑状态
+  const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [tagResource, setTagResource] = useState<ResourceInfo | null>(null);
+  const [tagValue, setTagValue] = useState<string[]>([]);
+  const [tagSaving, setTagSaving] = useState(false);
+
+  const openTagModal = (r: ResourceInfo) => {
+    setTagResource(r);
+    setTagValue([...(r.tags ?? [])]);
+    setTagModalOpen(true);
+  };
+
+  const saveTags = async () => {
+    if (!tagResource) return;
+    setTagSaving(true);
+    try {
+      await api.put(`/resources/${tagResource.id}/tags`, { tags: tagValue });
+      message.success('标签已保存(新增的标签会推送给相关收藏用户)');
+      setTagModalOpen(false);
+      fetchResources();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || '保存失败');
+    } finally {
+      setTagSaving(false);
+    }
+  };
 
   const fetchGroups = useCallback(async () => {
     try {
@@ -296,6 +323,15 @@ export default function Resources() {
                   render: (group: ResourceGroupInfo | null) => group ? <Tag>{group.name}</Tag> : '-',
                 },
                 {
+                  title: '标签',
+                  dataIndex: 'tags',
+                  width: 180,
+                  render: (tags?: string[]) =>
+                    tags && tags.length > 0
+                      ? tags.map((t) => <Tag key={t} color="purple">#{t}</Tag>)
+                      : <span style={{ color: '#999' }}>无</span>,
+                },
+                {
                   title: '文件数',
                   dataIndex: 'mediaFiles',
                   width: 80,
@@ -303,10 +339,11 @@ export default function Resources() {
                 },
                 {
                   title: '操作',
-                  width: 120,
+                  width: 160,
                   render: (_: unknown, record: ResourceInfo) => (
                     <Space>
-                      <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openEditResource(record)} />
+                      <Button size="small" type="text" icon={<TagsOutlined />} title="标签" onClick={() => openTagModal(record)} />
+                      <Button size="small" type="text" icon={<EditOutlined />} title="编辑" onClick={() => openEditResource(record)} />
                       <Popconfirm title="确定删除？" onConfirm={() => handleDeleteResource(record.id)}>
                         <Button size="small" type="text" danger icon={<DeleteOutlined />} />
                       </Popconfirm>
@@ -386,6 +423,31 @@ export default function Resources() {
         {uploadProgress !== null && (
           <Progress percent={uploadProgress} status={uploading ? 'active' : 'success'} />
         )}
+      </Modal>
+
+      {/* 标签编辑弹窗 */}
+      <Modal
+        title={`标签 — 资源 #${tagResource?.id ?? ''}`}
+        open={tagModalOpen}
+        onOk={saveTags}
+        onCancel={() => setTagModalOpen(false)}
+        confirmLoading={tagSaving}
+        okText="保存"
+        destroyOnHidden
+      >
+        <p style={{ color: '#666', fontSize: 13 }}>
+          标签仅在后台可见,机器人前端不展示。
+          <br />
+          <strong>保存时</strong>,新增的标签会自动把当前资源推送给曾收藏过含该标签资源的用户。
+        </p>
+        <Select
+          mode="tags"
+          style={{ width: '100%' }}
+          placeholder="输入后按回车添加,如: 高清 美图 写真"
+          tokenSeparators={[',', '，', ' ']}
+          value={tagValue}
+          onChange={(v) => setTagValue(v)}
+        />
       </Modal>
     </>
   );

@@ -11,6 +11,7 @@ export interface ResourceInfo {
   updatedAt: string;
   mediaFiles: MediaFileInfo[];
   group?: ResourceGroupInfo | null;
+  tags?: string[];
 }
 
 export interface MediaFileInfo {

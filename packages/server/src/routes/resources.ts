@@ -88,4 +88,21 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+/**
+ * 覆盖式更新资源标签(管理员标记,机器人前端不可见)。
+ * body: { tags: string[] }
+ * 对新增的 tag 异步触发对相关收藏用户的资源推送。
+ */
+router.put('/:id/tags', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { tags } = req.body ?? {};
+    if (!Array.isArray(tags)) return fail(res, 'tags 必须是数组', 400);
+    const normalized = await ResourceService.setTags(id, tags as string[]);
+    return success(res, { tags: normalized });
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
 export default router;

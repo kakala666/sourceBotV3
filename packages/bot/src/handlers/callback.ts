@@ -83,6 +83,38 @@ export async function handleCallback(ctx: Context, botId: number) {
     return;
   }
 
+  // 收藏当前资源
+  const favMatch = data.match(/^fav:(\d+):(\d+)$/);
+  if (favMatch) {
+    const sessionId = parseInt(favMatch[1], 10);
+    const resourceId = parseInt(favMatch[2], 10);
+    try {
+      const session = await prisma.userSession.findUnique({
+        where: { id: sessionId },
+        include: { botUser: true },
+      });
+      if (!session) {
+        await ctx.answerCallbackQuery({ text: '会话已失效' }).catch(() => {});
+        return;
+      }
+      const existing = await prisma.favoriteResource.findUnique({
+        where: { botUserId_resourceId: { botUserId: session.botUser.id, resourceId } },
+      });
+      if (existing) {
+        await ctx.answerCallbackQuery({ text: '⭐ 已收藏过该资源' }).catch(() => {});
+      } else {
+        await prisma.favoriteResource.create({
+          data: { botUserId: session.botUser.id, resourceId },
+        });
+        await ctx.answerCallbackQuery({ text: '⭐ 收藏成功' }).catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('[callback] fav 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '收藏失败,请重试' }).catch(() => {});
+    }
+    return;
+  }
+
   // 展开当前页的隐藏 mediaFile(先校验订阅)
   const revealMatch = data.match(/^reveal:(\d+):(\d+)$/);
   if (revealMatch) {
@@ -286,10 +318,12 @@ async function processNextPage(
 
   const isLast = nextIndex >= totalContent - 1;
 
+  const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+
   if (isLast) {
-    // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮
+    // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮 / 收藏
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
     } catch (err: any) {
@@ -304,7 +338,7 @@ async function processNextPage(
     // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
     const searchMoreUrl = await getSearchMoreUrl();
-    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl);
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
     } catch (err: any) {

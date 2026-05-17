@@ -281,12 +281,14 @@ function buildContentKeyboard(
   nextIndex?: number,
   revealInfo?: { sessionId: number; currentIndex: number } | null,
   searchMoreUrl?: string,
+  favoriteInfo?: { sessionId: number; resourceId: number } | null,
 ): InlineKeyboard | undefined {
   const hasContentBtns = contentButtons && contentButtons.length > 0;
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
   const hasReveal = !!revealInfo;
+  const hasFav = !!favoriteInfo;
 
-  if (!hasContentBtns && !hasPageBtn && !hasReveal) return undefined;
+  if (!hasContentBtns && !hasPageBtn && !hasReveal && !hasFav) return undefined;
 
   const keyboard = new InlineKeyboard();
 
@@ -300,6 +302,11 @@ function buildContentKeyboard(
   // 「展开更多」靠上(与当前页媒体相关的副动作)
   if (hasReveal) {
     keyboard.text('🔽 展开更多', `reveal:${revealInfo!.sessionId}:${revealInfo!.currentIndex}`).row();
+  }
+
+  // 「⭐ 收藏」在 展开 下方、搜索更多上方
+  if (hasFav) {
+    keyboard.text('⭐ 收藏', `fav:${favoriteInfo!.sessionId}:${favoriteInfo!.resourceId}`).row();
   }
 
   // 「搜索更多资源」紧贴翻页按钮上方(仅当有翻页按钮时显示)

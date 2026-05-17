@@ -4,6 +4,7 @@ import path from 'path';
 import { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE } from 'shared';
 import type { PaginatedResponse, ResourceInfo } from 'shared';
 import { getVideoMeta, generateThumbnail } from '../utils/video';
+import { notifyResource, type NotifyRecipient } from './notify-resource.client';
 
 const uploadDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
@@ -49,7 +50,11 @@ export class ResourceService {
     const [items, total] = await Promise.all([
       prisma.resource.findMany({
         where,
-        include: { mediaFiles: { orderBy: { sortOrder: 'asc' } }, group: true },
+        include: {
+          mediaFiles: { orderBy: { sortOrder: 'asc' } },
+          group: true,
+          tags: { select: { tag: true }, orderBy: { tag: 'asc' } },
+        },
         orderBy: { createdAt: 'desc' },
         skip,
         take: pageSize,
@@ -57,7 +62,11 @@ export class ResourceService {
       prisma.resource.count({ where }),
     ]);
 
-    const serialized = items.map((r: any) => ({ ...r, group: serializeGroup(r.group) }));
+    const serialized = items.map((r: any) => ({
+      ...r,
+      group: serializeGroup(r.group),
+      tags: (r.tags ?? []).map((t: any) => t.tag),
+    }));
 
     return {
       items: serialized as unknown as ResourceInfo[],
@@ -159,5 +168,72 @@ export class ResourceService {
 
     await prisma.resource.delete({ where: { id } });
     return { referenced: false };
+  }
+
+  /**
+   * 覆盖式更新资源标签。
+   * 计算 diff:对新增的 tag,异步触发"对收藏过含该 tag 资源的用户推送当前资源"。
+   * 删除/不变的 tag 不触发推送。
+   */
+  static async setTags(resourceId: number, tags: string[]): Promise<string[]> {
+    // 规范化:trim + 去空 + 去重
+    const normalized = Array.from(new Set(
+      tags.map((t) => String(t).trim()).filter((t) => t.length > 0 && t.length <= 50)
+    ));
+
+    const existing = await prisma.resourceTag.findMany({
+      where: { resourceId },
+      select: { tag: true },
+    });
+    const oldSet = new Set(existing.map((e) => e.tag));
+    const newSet = new Set(normalized);
+
+    const toAdd = normalized.filter((t) => !oldSet.has(t));
+    const toRemove = [...oldSet].filter((t) => !newSet.has(t));
+
+    await prisma.$transaction([
+      ...(toRemove.length
+        ? [prisma.resourceTag.deleteMany({ where: { resourceId, tag: { in: toRemove } } })]
+        : []),
+      ...toAdd.map((tag) =>
+        prisma.resourceTag.create({ data: { resourceId, tag } }),
+      ),
+    ]);
+
+    // 异步触发推送(只对新增 tag)
+    if (toAdd.length > 0) {
+      this.triggerPushForAddedTags(resourceId, toAdd).catch((e) =>
+        console.error('[setTags] push trigger failed:', e.message),
+      );
+    }
+
+    return normalized;
+  }
+
+  /**
+   * 对新增的 tag 计算受众:
+   *   "曾收藏过任何带这些 tag 中之一的资源的所有 BotUser"
+   * 然后调 bot 内部 API 推送当前 resource。
+   */
+  private static async triggerPushForAddedTags(resourceId: number, addedTags: string[]) {
+    // 找所有相关 botUserId
+    const rows = await prisma.$queryRaw<{ botUserId: number; botId: number; telegramId: bigint }[]>`
+      SELECT DISTINCT fr."botUserId", bu."botId", bu."telegramId"
+      FROM "FavoriteResource" fr
+      JOIN "ResourceTag" rt ON rt."resourceId" = fr."resourceId"
+      JOIN "BotUser" bu ON bu.id = fr."botUserId"
+      WHERE rt.tag = ANY(${addedTags}::text[])
+    `;
+    if (rows.length === 0) return;
+
+    const recipients: NotifyRecipient[] = rows.map((r) => ({
+      botId: r.botId,
+      telegramId: r.telegramId.toString(),
+    }));
+
+    const tagDisplay = addedTags.map((t) => `#${t}`).join(' ');
+    const prefixText = `📢 您关注的标签 ${tagDisplay} 有新资源`;
+
+    await notifyResource(resourceId, recipients, prefixText);
   }
 }

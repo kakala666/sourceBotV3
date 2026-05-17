@@ -2,6 +2,7 @@ import express from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import type { BotManager } from '../manager/bot-manager';
 import { createBroadcastRouter } from './routes';
+import { createNotifyResourceRouter } from './notify-resource';
 
 /**
  * X-API-Key 认证中间件
@@ -29,6 +30,7 @@ export function startBroadcastServer(botManager: BotManager) {
 
   app.use(express.json({ limit: '50mb' }));
   app.use('/api/broadcast', apiKeyAuth, createBroadcastRouter(botManager));
+  app.use('/api/notify-resource', apiKeyAuth, createNotifyResourceRouter(botManager));
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', service: 'broadcast' });

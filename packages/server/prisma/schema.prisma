@@ -77,6 +77,33 @@ model Resource {
   mediaFiles      MediaFile[]
   contentBindings ContentBinding[]
   adBindings      AdBinding[]
+  tags            ResourceTag[]
+  favorites       FavoriteResource[]
+}
+
+model ResourceTag {
+  id         Int      @id @default(autoincrement())
+  resourceId Int
+  tag        String
+  createdAt  DateTime @default(now())
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([resourceId, tag])
+  @@index([tag])
+}
+
+model FavoriteResource {
+  id         Int      @id @default(autoincrement())
+  botUserId  Int
+  resourceId Int
+  createdAt  DateTime @default(now())
+
+  botUser  BotUser  @relation(fields: [botUserId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([botUserId, resourceId])
+  @@index([resourceId])
 }
 
 model MediaFile {
@@ -147,6 +174,7 @@ model BotUser {
   bot        Bot          @relation(fields: [botId], references: [id], onDelete: Cascade)
   inviteLink InviteLink   @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
   sessions   UserSession[]
+  favorites  FavoriteResource[]
 
   @@unique([telegramId, botId])
 }

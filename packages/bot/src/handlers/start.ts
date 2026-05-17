@@ -74,9 +74,11 @@ async function sendFirstResource(
 
   const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
 
+  const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+
   // 如果只有一条资源，发完即结束
   if (totalContent <= 1) {
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
     } catch (err: any) {
@@ -91,7 +93,7 @@ async function sendFirstResource(
 
   // 多条资源，带翻页按钮
   const searchMoreUrl = await getSearchMoreUrl();
-  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl);
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl, favoriteInfo);
   try {
     await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
   } catch (err: any) {
