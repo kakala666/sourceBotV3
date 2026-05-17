@@ -42,4 +42,51 @@ router.get('/by-link', async (req, res) => {
   }
 });
 
+router.get('/button-clicks', async (req, res) => {
+  try {
+    const { startDate, endDate, botId, inviteLinkId } = req.query;
+    const data = await StatsService.buttonClicks({
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+      botId: botId ? parseInt(botId as string) : undefined,
+      inviteLinkId: inviteLinkId ? parseInt(inviteLinkId as string) : undefined,
+    });
+    return success(res, data);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
+router.get('/secondary-op-rate', async (req, res) => {
+  try {
+    const { startDate, endDate, botId } = req.query;
+    const data = await StatsService.secondaryOpRate({
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+      botId: botId ? parseInt(botId as string) : undefined,
+    });
+    return success(res, data);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
+router.get('/latency', async (req, res) => {
+  try {
+    const { startDate, endDate, botId, inviteLinkId, buttonType, page, pageSize } = req.query;
+    const data = await StatsService.latency({
+      startDate: startDate as string | undefined,
+      endDate: endDate as string | undefined,
+      botId: botId ? parseInt(botId as string) : undefined,
+      inviteLinkId: inviteLinkId ? parseInt(inviteLinkId as string) : undefined,
+      buttonType: buttonType as string | undefined,
+      page: page ? parseInt(page as string) : undefined,
+      pageSize: pageSize ? parseInt(pageSize as string) : undefined,
+    });
+    return success(res, data);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
 export default router;

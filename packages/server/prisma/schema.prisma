@@ -171,6 +171,20 @@ model AdImpression {
   viewedAt     DateTime @default(now())
 }
 
+model ButtonClick {
+  id           Int      @id @default(autoincrement())
+  botId        Int
+  inviteLinkId Int
+  botUserId    Int
+  buttonType   String   // 'next' | 'reveal'
+  latencyMs    Int      // 处理延迟(从收到 callback 到返回的 ms)
+  clickedAt    DateTime @default(now())
+
+  @@index([inviteLinkId, clickedAt])
+  @@index([botUserId, inviteLinkId, buttonType])
+  @@index([buttonType, clickedAt])
+}
+
 model SystemSetting {
   id    Int    @id @default(autoincrement())
   key   String @unique

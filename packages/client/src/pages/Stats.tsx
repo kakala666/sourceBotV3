@@ -1,18 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Card, Table, DatePicker, message, Typography, Statistic, Row, Col, Radio,
+  Card, Table, DatePicker, message, Typography, Statistic, Row, Col, Radio, Select, Space,
 } from 'antd';
 import {
   UserAddOutlined, TeamOutlined, NotificationOutlined,
-  LineChartOutlined, BarChartOutlined, AreaChartOutlined,
+  LineChartOutlined, BarChartOutlined, AreaChartOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { useNavigate } from 'react-router-dom';
 import {
   ResponsiveContainer, LineChart, BarChart, AreaChart,
   Line, Bar, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts';
 import type {
-  StatsOverview, DailyStat, LinkStat, ApiResponse,
+  StatsOverview, DailyStat, LinkStat, ButtonClickStat, SecondaryOpRateStat,
+  BotInfo, ApiResponse,
 } from 'shared';
 import api from '@/services/api';
 
@@ -20,6 +22,11 @@ const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 type ChartType = 'line' | 'smooth' | 'bar' | 'area';
+
+const BUTTON_LABEL: Record<string, string> = {
+  next: '下一页 ▶',
+  reveal: '🔽 展开更多',
+};
 
 function TrendChart({ data, chartType }: { data: DailyStat[]; chartType: ChartType }) {
   if (data.length === 0) {
@@ -94,15 +101,34 @@ function TrendChart({ data, chartType }: { data: DailyStat[]; chartType: ChartTy
 }
 
 export default function Stats() {
+  const navigate = useNavigate();
   const [overview, setOverview] = useState<StatsOverview | null>(null);
   const [dailyStats, setDailyStats] = useState<DailyStat[]>([]);
   const [linkStats, setLinkStats] = useState<LinkStat[]>([]);
+  const [bots, setBots] = useState<BotInfo[]>([]);
+  const [selectedBotId, setSelectedBotId] = useState<number | null>(null);
+  const [buttonClicks, setButtonClicks] = useState<ButtonClickStat[]>([]);
+  const [secondaryStats, setSecondaryStats] = useState<SecondaryOpRateStat[]>([]);
   const [loading, setLoading] = useState(false);
   const [chartType, setChartType] = useState<ChartType>('line');
   const [dateRange, setDateRange] = useState<[dayjs.Dayjs, dayjs.Dayjs]>([
     dayjs().subtract(7, 'day'),
     dayjs(),
   ]);
+
+  const rangeParams = useMemo(() => ({
+    startDate: dateRange[0].format('YYYY-MM-DD'),
+    endDate: dateRange[1].format('YYYY-MM-DD'),
+  }), [dateRange]);
+
+  const fetchBots = useCallback(async () => {
+    try {
+      const { data } = await api.get<ApiResponse<BotInfo[]>>('/bots');
+      setBots(data.data || []);
+    } catch {
+      // 忽略
+    }
+  }, []);
 
   const fetchOverview = useCallback(async () => {
     try {
@@ -116,32 +142,56 @@ export default function Stats() {
   const fetchDailyStats = useCallback(async () => {
     try {
       const { data } = await api.get<ApiResponse<DailyStat[]>>('/stats/daily', {
-        params: {
-          startDate: dateRange[0].format('YYYY-MM-DD'),
-          endDate: dateRange[1].format('YYYY-MM-DD'),
-        },
+        params: rangeParams,
       });
       setDailyStats(data.data || []);
     } catch {
       message.error('获取趋势数据失败');
     }
-  }, [dateRange]);
+  }, [rangeParams]);
 
   const fetchLinkStats = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await api.get<ApiResponse<LinkStat[]>>('/stats/by-link');
+      const params: Record<string, any> = {};
+      if (selectedBotId) params.botId = selectedBotId;
+      const { data } = await api.get<ApiResponse<LinkStat[]>>('/stats/by-link', { params });
       setLinkStats(data.data || []);
     } catch {
       message.error('获取链接统计失败');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedBotId]);
 
+  const fetchButtonClicks = useCallback(async () => {
+    try {
+      const params: Record<string, any> = { ...rangeParams };
+      if (selectedBotId) params.botId = selectedBotId;
+      const { data } = await api.get<ApiResponse<ButtonClickStat[]>>('/stats/button-clicks', { params });
+      setButtonClicks(data.data || []);
+    } catch {
+      message.error('获取按钮点击统计失败');
+    }
+  }, [rangeParams, selectedBotId]);
+
+  const fetchSecondaryStats = useCallback(async () => {
+    try {
+      const params: Record<string, any> = { ...rangeParams };
+      if (selectedBotId) params.botId = selectedBotId;
+      const { data } = await api.get<ApiResponse<SecondaryOpRateStat[]>>('/stats/secondary-op-rate', { params });
+      setSecondaryStats(data.data || []);
+    } catch {
+      message.error('获取二次操作率失败');
+    }
+  }, [rangeParams, selectedBotId]);
+
+  useEffect(() => { fetchBots(); }, [fetchBots]);
   useEffect(() => { fetchOverview(); }, [fetchOverview]);
   useEffect(() => { fetchDailyStats(); }, [fetchDailyStats]);
   useEffect(() => { fetchLinkStats(); }, [fetchLinkStats]);
+  useEffect(() => { fetchButtonClicks(); }, [fetchButtonClicks]);
+  useEffect(() => { fetchSecondaryStats(); }, [fetchSecondaryStats]);
 
   const linkColumns = [
     { title: '机器人', dataIndex: 'botName', key: 'botName' },
@@ -152,9 +202,60 @@ export default function Stats() {
     { title: '总广告展示', dataIndex: 'totalAdImpressions', key: 'totalAdImpressions' },
   ];
 
+  const buttonClickColumns = [
+    {
+      title: '按钮',
+      dataIndex: 'buttonType',
+      key: 'buttonType',
+      render: (v: string) => BUTTON_LABEL[v] ?? v,
+    },
+    {
+      title: '总点击数(非去重)',
+      dataIndex: 'totalClicks',
+      key: 'totalClicks',
+      sorter: (a: ButtonClickStat, b: ButtonClickStat) => a.totalClicks - b.totalClicks,
+    },
+    {
+      title: '去重用户数(按用户×链接×按钮)',
+      dataIndex: 'uniqueClickers',
+      key: 'uniqueClickers',
+      sorter: (a: ButtonClickStat, b: ButtonClickStat) => a.uniqueClickers - b.uniqueClickers,
+    },
+  ];
+
+  const secondaryColumns = [
+    { title: '机器人', dataIndex: 'botName', key: 'botName' },
+    { title: '链接名称', dataIndex: 'linkName', key: 'linkName' },
+    { title: 'Code', dataIndex: 'linkCode', key: 'linkCode' },
+    {
+      title: '新增用户',
+      dataIndex: 'newUsers',
+      key: 'newUsers',
+      sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.newUsers - b.newUsers,
+    },
+    {
+      title: '其中操作过的用户',
+      dataIndex: 'activatedUsers',
+      key: 'activatedUsers',
+      sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.activatedUsers - b.activatedUsers,
+    },
+    {
+      title: '二次操作率',
+      dataIndex: 'rate',
+      key: 'rate',
+      sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.rate - b.rate,
+      render: (v: number) => `${(v * 100).toFixed(1)}%`,
+    },
+  ];
+
   return (
     <>
-      <Title level={4} style={{ marginBottom: 16 }}>统计报表</Title>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <Title level={4} style={{ margin: 0 }}>统计报表</Title>
+        <a onClick={() => navigate('/stats/latency')} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <ThunderboltOutlined /> 查看延迟详情
+        </a>
+      </div>
 
       {/* 概览卡片 */}
       <Row gutter={16} style={{ marginBottom: 24 }}>
@@ -189,30 +290,68 @@ export default function Stats() {
         </Col>
       </Row>
 
+      {/* 筛选条 */}
+      <Card style={{ marginBottom: 16 }}>
+        <Space wrap>
+          <span>机器人:</span>
+          <Select
+            allowClear
+            placeholder="全部机器人"
+            style={{ width: 220 }}
+            value={selectedBotId ?? undefined}
+            onChange={(v) => setSelectedBotId(v ?? null)}
+            options={bots.map((b) => ({ label: b.name, value: b.id }))}
+          />
+          <span>时间范围:</span>
+          <RangePicker
+            value={dateRange}
+            onChange={(dates) => {
+              if (dates && dates[0] && dates[1]) {
+                setDateRange([dates[0], dates[1]]);
+              }
+            }}
+          />
+        </Space>
+      </Card>
+
       {/* 趋势图 */}
       <Card
         title="趋势图"
         style={{ marginBottom: 24 }}
         extra={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Radio.Group value={chartType} onChange={(e) => setChartType(e.target.value)} size="small">
-              <Radio.Button value="line"><LineChartOutlined /> 折线图</Radio.Button>
-              <Radio.Button value="smooth"><LineChartOutlined /> 曲线图</Radio.Button>
-              <Radio.Button value="bar"><BarChartOutlined /> 柱状图</Radio.Button>
-              <Radio.Button value="area"><AreaChartOutlined /> 面积图</Radio.Button>
-            </Radio.Group>
-            <RangePicker
-              value={dateRange}
-              onChange={(dates) => {
-                if (dates && dates[0] && dates[1]) {
-                  setDateRange([dates[0], dates[1]]);
-                }
-              }}
-            />
-          </div>
+          <Radio.Group value={chartType} onChange={(e) => setChartType(e.target.value)} size="small">
+            <Radio.Button value="line"><LineChartOutlined /> 折线图</Radio.Button>
+            <Radio.Button value="smooth"><LineChartOutlined /> 曲线图</Radio.Button>
+            <Radio.Button value="bar"><BarChartOutlined /> 柱状图</Radio.Button>
+            <Radio.Button value="area"><AreaChartOutlined /> 面积图</Radio.Button>
+          </Radio.Group>
         }
       >
         <TrendChart data={dailyStats} chartType={chartType} />
+      </Card>
+
+      {/* 按钮点击统计 */}
+      <Card title="按钮点击统计" style={{ marginBottom: 24 }}>
+        <Table
+          rowKey="buttonType"
+          columns={buttonClickColumns}
+          dataSource={buttonClicks}
+          pagination={false}
+          size="small"
+          locale={{ emptyText: '该时间范围内暂无点击' }}
+        />
+      </Card>
+
+      {/* 二次操作率 */}
+      <Card title="二次操作率(新用户中点过 next/reveal 的比例)" style={{ marginBottom: 24 }}>
+        <Table
+          rowKey="linkId"
+          columns={secondaryColumns}
+          dataSource={secondaryStats}
+          pagination={false}
+          size="small"
+          locale={{ emptyText: '该时间范围内暂无新用户' }}
+        />
       </Card>
 
       {/* 按链接细分 */}

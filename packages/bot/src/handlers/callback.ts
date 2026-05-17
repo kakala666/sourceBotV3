@@ -11,6 +11,21 @@ import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisib
 const processingSet = new Set<number>();
 
 /**
+ * 异步写入 ButtonClick 埋点(失败仅日志,不影响主流程)
+ */
+function recordButtonClick(params: {
+  botId: number;
+  inviteLinkId: number;
+  botUserId: number;
+  buttonType: 'next' | 'reveal';
+  latencyMs: number;
+}) {
+  prisma.buttonClick
+    .create({ data: params })
+    .catch((e: any) => console.error('[buttonClick] write failed:', e.message));
+}
+
+/**
  * 处理翻页回调 next:{sessionId}:{nextIndex}
  */
 export async function handleCallback(ctx: Context, botId: number) {
@@ -73,6 +88,9 @@ export async function handleCallback(ctx: Context, botId: number) {
   if (revealMatch) {
     const sessionId = parseInt(revealMatch[1], 10);
     const currentIndex = parseInt(revealMatch[2], 10);
+    const startTime = Date.now();
+    let trackedBotUserId: number | null = null;
+    let trackedInviteLinkId: number | null = null;
     try {
       await ctx.answerCallbackQuery();
       const session = await prisma.userSession.findUnique({
@@ -80,6 +98,8 @@ export async function handleCallback(ctx: Context, botId: number) {
         include: { botUser: true },
       });
       if (!session) return;
+      trackedBotUserId = session.botUser.id;
+      trackedInviteLinkId = session.botUser.inviteLinkId;
       // 展开"第 N 个资源"中 N = currentIndex + 1
       const gateResult = await ensureSubscribed(
         session.botUser.inviteLinkId,
@@ -102,6 +122,16 @@ export async function handleCallback(ctx: Context, botId: number) {
       await processReveal(ctx, botId, sessionId, currentIndex);
     } catch (err: any) {
       console.error('[callback] reveal 处理失败:', err.message);
+    } finally {
+      if (trackedBotUserId !== null && trackedInviteLinkId !== null) {
+        recordButtonClick({
+          botId,
+          inviteLinkId: trackedInviteLinkId,
+          botUserId: trackedBotUserId,
+          buttonType: 'reveal',
+          latencyMs: Date.now() - startTime,
+        });
+      }
     }
     return;
   }
@@ -159,6 +189,24 @@ async function processNextPage(
   sessionId: number,
   nextIndex: number,
 ) {
+  const startTime = Date.now();
+  let trackedBotUserId: number | null = null;
+  let trackedInviteLinkId: number | null = null;
+  try {
+    return await _processNextPageInner();
+  } finally {
+    if (trackedBotUserId !== null && trackedInviteLinkId !== null) {
+      recordButtonClick({
+        botId,
+        inviteLinkId: trackedInviteLinkId,
+        botUserId: trackedBotUserId,
+        buttonType: 'next',
+        latencyMs: Date.now() - startTime,
+      });
+    }
+  }
+
+  async function _processNextPageInner() {
   // 查询会话
   const session = await prisma.userSession.findUnique({
     where: { id: sessionId },
@@ -168,6 +216,8 @@ async function processNextPage(
   if (!session || session.isCompleted) return;
 
   const { botUser } = session;
+  trackedBotUserId = botUser.id;
+  trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
   const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex);
@@ -262,6 +312,7 @@ async function processNextPage(
       const fallbackKb = buildPageKeyboard(sessionId, nextIndex + 1, searchMoreUrl);
       await ctx.reply('⚠️ 当前资源加载失败', { reply_markup: fallbackKb });
     }
+  }
   }
 }
 

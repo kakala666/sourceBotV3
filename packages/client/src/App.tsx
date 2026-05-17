@@ -9,6 +9,7 @@ import Contents from '@/pages/Contents';
 import Ads from '@/pages/Ads';
 import Users from '@/pages/Users';
 import Stats from '@/pages/Stats';
+import LatencyStats from '@/pages/LatencyStats';
 import Settings from '@/pages/Settings';
 import Manual from '@/pages/Manual';
 import SmartQuestion from '@/pages/SmartQuestion';
@@ -38,6 +39,7 @@ const router = createBrowserRouter([
       { path: 'ads', element: <Ads /> },
       { path: 'users', element: <Users /> },
       { path: 'stats', element: <Stats /> },
+      { path: 'stats/latency', element: <LatencyStats /> },
       { path: 'settings', element: <Settings /> },
       { path: 'manual', element: <Manual /> },
       { path: 'smart-question', element: <SmartQuestion /> },
