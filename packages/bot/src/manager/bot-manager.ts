@@ -169,55 +169,49 @@ export class BotManager {
 
   /**
    * 为 Bot 注册统一的消息处理器
+   *
+   * 重要:所有 handler 都是 fire-and-forget(不 await),否则 grammy 默认 sequential polling
+   * 会被长任务(发媒体组、channel-collector getFile 等)阻塞,导致其他用户的 update
+   * 排队等待甚至 getUpdates 长时间不再触发。
    */
   private registerHandlers(bot: Bot, botId: number) {
     // /start 命令处理
-    bot.command('start', async (ctx) => {
-      try {
-        await handleStart(ctx, botId);
-      } catch (err: any) {
+    bot.command('start', (ctx) => {
+      handleStart(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] /start 处理失败:`, err.message);
-      }
+      });
     });
 
     // 翻页回调处理
-    bot.on('callback_query:data', async (ctx) => {
-      try {
-        await handleCallback(ctx, botId);
-      } catch (err: any) {
+    bot.on('callback_query:data', (ctx) => {
+      handleCallback(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] callback 处理失败:`, err.message);
-        await ctx.answerCallbackQuery().catch(() => {});
-      }
+        ctx.answerCallbackQuery().catch(() => {});
+      });
     });
 
     // 私聊消息自动回复广告
-    bot.on('message', async (ctx, next) => {
+    bot.on('message', (ctx, next) => {
       if (ctx.chat?.type !== 'private') {
         return next();
       }
-      try {
-        await handleAutoReply(ctx, botId);
-      } catch (err: any) {
+      handleAutoReply(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] auto-reply 处理失败:`, err.message);
-      }
+      });
     });
 
     // 转发消息检测（统计群组）
-    bot.on('message', async (ctx) => {
-      try {
-        await handleForward(ctx, botId);
-      } catch (err: any) {
+    bot.on('message', (ctx) => {
+      handleForward(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] forward 处理失败:`, err.message);
-      }
+      });
     });
 
     // 频道消息:激活指令(kakaco)+ 资源收集
-    bot.on('channel_post', async (ctx) => {
-      try {
-        await handleChannelPost(ctx, botId);
-      } catch (err: any) {
+    bot.on('channel_post', (ctx) => {
+      handleChannelPost(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] channel_post 处理失败:`, err.message);
-      }
+      });
     });
 
     // 全局错误处理
