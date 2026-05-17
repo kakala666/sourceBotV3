@@ -4,13 +4,14 @@ import {
   Table, Button, Modal, Form, Input, Space, message, Popconfirm, Typography, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, CopyOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, CopyOutlined, LockOutlined,
 } from '@ant-design/icons';
 import type {
   InviteLinkInfo, InviteLinkCreateInput, BotInfo,
   ApiResponse,
 } from 'shared';
 import api from '@/services/api';
+import SubscriptionGateDrawer from '@/components/SubscriptionGateDrawer';
 
 const { Title } = Typography;
 
@@ -25,6 +26,7 @@ export default function Links() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<InviteLinkInfo | null>(null);
   const [form] = Form.useForm<InviteLinkCreateInput>();
+  const [gateDrawer, setGateDrawer] = useState<{ open: boolean; link: InviteLinkInfo | null }>({ open: false, link: null });
 
   const fetchBot = useCallback(async () => {
     try {
@@ -129,6 +131,9 @@ export default function Links() {
       render: (_: unknown, record: InviteLinkInfo) => (
         <Space>
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>编辑</Button>
+          <Button size="small" icon={<LockOutlined />} onClick={() => setGateDrawer({ open: true, link: record })}>
+            强制订阅
+          </Button>
           <Popconfirm title="确定删除？" onConfirm={() => handleDelete(record.id)}>
             <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
           </Popconfirm>
@@ -171,6 +176,12 @@ export default function Links() {
           </Form.Item>
         </Form>
       </Modal>
+      <SubscriptionGateDrawer
+        open={gateDrawer.open}
+        linkId={gateDrawer.link?.id ?? null}
+        linkName={gateDrawer.link?.name ?? ''}
+        onClose={() => setGateDrawer({ open: false, link: null })}
+      />
     </>
   );
 }

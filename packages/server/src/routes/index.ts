@@ -17,7 +17,7 @@ const router: IRouter = Router();
 router.use('/auth', authRouter);
 router.use('/bots', botsRouter);
 router.use('/bots', linksRouter);
-router.use('/bots', subscriptionGateRouter);
+router.use('/links', subscriptionGateRouter);
 router.use('/resources', resourcesRouter);
 router.use('/resource-groups', resourceGroupsRouter);
 router.use('/links', contentsRouter);

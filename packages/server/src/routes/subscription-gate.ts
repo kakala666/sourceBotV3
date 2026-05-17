@@ -10,7 +10,7 @@ router.use(authMiddleware);
 function serialize(gate: any) {
   return {
     id: gate.id,
-    botId: gate.botId,
+    inviteLinkId: gate.inviteLinkId,
     isEnabled: gate.isEnabled,
     promptTemplate: gate.promptTemplate,
     channels: (gate.channels ?? []).map((c: any) => ({
@@ -27,19 +27,19 @@ function serialize(gate: any) {
   };
 }
 
-router.get('/:botId/subscription-gate', async (req, res) => {
+router.get('/:linkId/subscription-gate', async (req, res) => {
   try {
-    const botId = parseInt(req.params.botId);
-    const gate = await SubscriptionGateService.getOrCreate(botId);
+    const linkId = parseInt(req.params.linkId);
+    const gate = await SubscriptionGateService.getOrCreate(linkId);
     return success(res, serialize(gate));
   } catch (err: any) {
     return fail(res, err.message, 500);
   }
 });
 
-router.put('/:botId/subscription-gate', async (req, res) => {
+router.put('/:linkId/subscription-gate', async (req, res) => {
   try {
-    const botId = parseInt(req.params.botId);
+    const linkId = parseInt(req.params.linkId);
     const { isEnabled, promptTemplate } = req.body ?? {};
     const data: any = {};
     if (typeof isEnabled === 'boolean') data.isEnabled = isEnabled;
@@ -48,7 +48,7 @@ router.put('/:botId/subscription-gate', async (req, res) => {
         ? promptTemplate.trim()
         : null;
     }
-    const gate = await SubscriptionGateService.update(botId, data);
+    const gate = await SubscriptionGateService.update(linkId, data);
     touchReloadSignal();
     return success(res, serialize(gate));
   } catch (err: any) {
@@ -56,14 +56,14 @@ router.put('/:botId/subscription-gate', async (req, res) => {
   }
 });
 
-router.post('/:botId/subscription-gate/channels', async (req, res) => {
+router.post('/:linkId/subscription-gate/channels', async (req, res) => {
   try {
-    const botId = parseInt(req.params.botId);
+    const linkId = parseInt(req.params.linkId);
     const { inviteUrl, chatId } = req.body ?? {};
     if (!inviteUrl) return fail(res, '请提供 inviteUrl', 400);
-    await SubscriptionGateService.addChannel(botId, inviteUrl, chatId);
+    await SubscriptionGateService.addChannel(linkId, inviteUrl, chatId);
     touchReloadSignal();
-    const gate = await SubscriptionGateService.getOrCreate(botId);
+    const gate = await SubscriptionGateService.getOrCreate(linkId);
     return success(res, serialize(gate), 201);
   } catch (err: any) {
     if (err.code === 'P2002') return fail(res, '该频道已添加', 409);
@@ -71,11 +71,11 @@ router.post('/:botId/subscription-gate/channels', async (req, res) => {
   }
 });
 
-router.delete('/:botId/subscription-gate/channels/:channelId', async (req, res) => {
+router.delete('/:linkId/subscription-gate/channels/:channelId', async (req, res) => {
   try {
-    const botId = parseInt(req.params.botId);
+    const linkId = parseInt(req.params.linkId);
     const channelId = parseInt(req.params.channelId);
-    await SubscriptionGateService.removeChannel(botId, channelId);
+    await SubscriptionGateService.removeChannel(linkId, channelId);
     touchReloadSignal();
     return success(res);
   } catch (err: any) {
@@ -83,11 +83,11 @@ router.delete('/:botId/subscription-gate/channels/:channelId', async (req, res) 
   }
 });
 
-router.post('/:botId/subscription-gate/channels/:channelId/recheck', async (req, res) => {
+router.post('/:linkId/subscription-gate/channels/:channelId/recheck', async (req, res) => {
   try {
-    const botId = parseInt(req.params.botId);
+    const linkId = parseInt(req.params.linkId);
     const channelId = parseInt(req.params.channelId);
-    const channel = await SubscriptionGateService.recheckChannel(botId, channelId);
+    const channel = await SubscriptionGateService.recheckChannel(linkId, channelId);
     touchReloadSignal();
     return success(res, {
       id: channel.id,

@@ -80,9 +80,9 @@ export async function handleCallback(ctx: Context, botId: number) {
         include: { botUser: true },
       });
       if (!session) return;
-      const gateResult = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+      const gateResult = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
       if (!gateResult.ok) {
-        const config = getGateConfig(botId);
+        const config = getGateConfig(session.botUser.inviteLinkId);
         await sendSubscriptionPrompt(
           ctx,
           config?.promptTemplate,
@@ -164,9 +164,9 @@ async function processNextPage(
   const { botUser } = session;
 
   // 强制订阅拦截
-  const gateResult = await ensureSubscribed(botId, botUser.telegramId, ctx.api);
+  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
   if (!gateResult.ok) {
-    const config = getGateConfig(botId);
+    const config = getGateConfig(botUser.inviteLinkId);
     await sendSubscriptionPrompt(ctx, config?.promptTemplate, sessionId, nextIndex, gateResult.missing);
     return;
   }
@@ -336,7 +336,7 @@ async function handleSubscriptionRecheck(
     return;
   }
 
-  const result = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+  const result = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
   if (!result.ok) {
     await ctx.answerCallbackQuery({
       text: '还有未订阅的频道,请检查后再试',
@@ -376,7 +376,7 @@ async function handleRevealRecheck(
     return;
   }
 
-  const result = await ensureSubscribed(botId, session.botUser.telegramId, ctx.api);
+  const result = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
   if (!result.ok) {
     await ctx.answerCallbackQuery({
       text: '还有未订阅的频道,请检查后再试',

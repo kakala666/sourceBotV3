@@ -11,8 +11,8 @@ import api from '@/services/api';
 const { Text, Paragraph } = Typography;
 
 interface Props {
-  botId: number | null;
-  botName: string;
+  linkId: number | null;
+  linkName: string;
   open: boolean;
   onClose: () => void;
 }
@@ -23,7 +23,7 @@ const STATUS_TAG: Record<SubscriptionGateChannelInfo['status'], { color: string;
   channel_gone: { color: 'red', text: '频道不存在' },
 };
 
-export default function SubscriptionGateDrawer({ botId, botName, open, onClose }: Props) {
+export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose }: Props) {
   const [gate, setGate] = useState<SubscriptionGateInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [newUrl, setNewUrl] = useState('');
@@ -35,10 +35,10 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   const [templateSaving, setTemplateSaving] = useState(false);
 
   const reload = async () => {
-    if (!botId) return;
+    if (!linkId) return;
     setLoading(true);
     try {
-      const { data } = await api.get<ApiResponse<SubscriptionGateInfo>>(`/bots/${botId}/subscription-gate`);
+      const { data } = await api.get<ApiResponse<SubscriptionGateInfo>>(`/links/${linkId}/subscription-gate`);
       if (data.data) {
         setGate(data.data);
         setTemplate(data.data.promptTemplate ?? '');
@@ -51,7 +51,7 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   useEffect(() => {
-    if (open && botId) reload();
+    if (open && linkId) reload();
     if (!open) {
       setGate(null);
       setNewUrl('');
@@ -60,13 +60,13 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
       setAddError(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, botId]);
+  }, [open, linkId]);
 
   const toggleEnabled = async (checked: boolean) => {
-    if (!botId) return;
+    if (!linkId) return;
     try {
       const { data } = await api.put<ApiResponse<SubscriptionGateInfo>>(
-        `/bots/${botId}/subscription-gate`,
+        `/links/${linkId}/subscription-gate`,
         { isEnabled: checked }
       );
       if (data.data) setGate(data.data);
@@ -77,7 +77,7 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   const addChannel = async () => {
-    if (!botId) return;
+    if (!linkId) return;
     if (!newUrl.trim()) {
       setAddError(mode === 'private' ? '请填邀请链接(用户加入用)' : '请填频道链接');
       return;
@@ -91,7 +91,7 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
     try {
       const body: { inviteUrl: string; chatId?: string } = { inviteUrl: newUrl.trim() };
       if (mode === 'private') body.chatId = newChatId.trim();
-      await api.post(`/bots/${botId}/subscription-gate/channels`, body);
+      await api.post(`/links/${linkId}/subscription-gate/channels`, body);
       setNewUrl('');
       setNewChatId('');
       message.success('频道已添加');
@@ -104,9 +104,9 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   const removeChannel = async (id: number) => {
-    if (!botId) return;
+    if (!linkId) return;
     try {
-      await api.delete(`/bots/${botId}/subscription-gate/channels/${id}`);
+      await api.delete(`/links/${linkId}/subscription-gate/channels/${id}`);
       message.success('已移除');
       await reload();
     } catch {
@@ -115,9 +115,9 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   const recheckChannel = async (id: number) => {
-    if (!botId) return;
+    if (!linkId) return;
     try {
-      await api.post(`/bots/${botId}/subscription-gate/channels/${id}/recheck`);
+      await api.post(`/links/${linkId}/subscription-gate/channels/${id}/recheck`);
       message.success('已重新验证');
       await reload();
     } catch (err: any) {
@@ -126,10 +126,10 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
   };
 
   const saveTemplate = async () => {
-    if (!botId) return;
+    if (!linkId) return;
     setTemplateSaving(true);
     try {
-      await api.put(`/bots/${botId}/subscription-gate`, { promptTemplate: template });
+      await api.put(`/links/${linkId}/subscription-gate`, { promptTemplate: template });
       message.success('提示文案已保存');
     } catch {
       message.error('保存失败');
@@ -142,7 +142,7 @@ export default function SubscriptionGateDrawer({ botId, botName, open, onClose }
     <Drawer
       open={open}
       onClose={onClose}
-      title={`强制订阅 — ${botName}`}
+      title={`强制订阅 — 链接: ${linkName}`}
       width={520}
       destroyOnClose
     >

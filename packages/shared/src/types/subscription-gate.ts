@@ -1,6 +1,6 @@
 export interface SubscriptionGateInfo {
   id: number;
-  botId: number;
+  inviteLinkId: number;
   isEnabled: boolean;
   promptTemplate: string | null;
   channels: SubscriptionGateChannelInfo[];

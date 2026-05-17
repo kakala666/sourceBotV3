@@ -30,7 +30,6 @@ model Bot {
   inviteLinks      InviteLink[]
   fileIds          BotFileId[]
   botUsers         BotUser[]
-  subscriptionGate SubscriptionGate?
   channelGroups    ResourceGroup[]   @relation("ChannelGroupSourceBot")
 }
 
@@ -42,10 +41,11 @@ model InviteLink {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bot             Bot              @relation(fields: [botId], references: [id], onDelete: Cascade)
-  contentBindings ContentBinding[]
-  adBindings      AdBinding[]
-  botUsers        BotUser[]
+  bot              Bot               @relation(fields: [botId], references: [id], onDelete: Cascade)
+  contentBindings  ContentBinding[]
+  adBindings       AdBinding[]
+  botUsers         BotUser[]
+  subscriptionGate SubscriptionGate?
 
   @@unique([botId, code])
 }
@@ -179,14 +179,14 @@ model SystemSetting {
 
 model SubscriptionGate {
   id              Int      @id @default(autoincrement())
-  botId           Int      @unique
+  inviteLinkId    Int      @unique
   isEnabled       Boolean  @default(false)
   promptTemplate  String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  bot      Bot                       @relation(fields: [botId], references: [id], onDelete: Cascade)
-  channels SubscriptionGateChannel[]
+  inviteLink InviteLink                @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
+  channels   SubscriptionGateChannel[]
 }
 
 model SubscriptionGateChannel {

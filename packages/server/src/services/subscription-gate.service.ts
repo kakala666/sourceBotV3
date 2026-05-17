@@ -7,32 +7,36 @@ import {
 
 export class SubscriptionGateService {
   /** 拿配置;不存在则懒创建一个 default-off 记录返回 */
-  static async getOrCreate(botId: number) {
+  static async getOrCreate(inviteLinkId: number) {
     let gate = await prisma.subscriptionGate.findUnique({
-      where: { botId },
+      where: { inviteLinkId },
       include: { channels: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!gate) {
       gate = await prisma.subscriptionGate.create({
-        data: { botId },
+        data: { inviteLinkId },
         include: { channels: true },
       });
     }
     return gate;
   }
 
-  static async update(botId: number, data: { isEnabled?: boolean; promptTemplate?: string | null }) {
-    await this.getOrCreate(botId);
+  static async update(inviteLinkId: number, data: { isEnabled?: boolean; promptTemplate?: string | null }) {
+    await this.getOrCreate(inviteLinkId);
     return prisma.subscriptionGate.update({
-      where: { botId },
+      where: { inviteLinkId },
       data,
       include: { channels: { orderBy: { sortOrder: 'asc' } } },
     });
   }
 
-  static async addChannel(botId: number, inviteUrl: string, chatIdInput?: string) {
-    const bot = await prisma.bot.findUnique({ where: { id: botId } });
-    if (!bot) throw new Error('Bot 不存在');
+  static async addChannel(inviteLinkId: number, inviteUrl: string, chatIdInput?: string) {
+    const link = await prisma.inviteLink.findUnique({
+      where: { id: inviteLinkId },
+      include: { bot: true },
+    });
+    if (!link) throw new Error('链接不存在');
+    const bot = link.bot;
 
     const isPrivate = !!chatIdInput;
 
@@ -52,7 +56,7 @@ export class SubscriptionGateService {
       storedInviteUrl = `https://t.me/${verified.username}`;
     }
 
-    const gate = await this.getOrCreate(botId);
+    const gate = await this.getOrCreate(inviteLinkId);
 
     const maxSort = await prisma.subscriptionGateChannel.aggregate({
       where: { gateId: gate.id },
@@ -73,24 +77,28 @@ export class SubscriptionGateService {
     });
   }
 
-  static async removeChannel(botId: number, channelId: number) {
+  static async removeChannel(inviteLinkId: number, channelId: number) {
     const channel = await prisma.subscriptionGateChannel.findUnique({
       where: { id: channelId },
       include: { gate: true },
     });
-    if (!channel || channel.gate.botId !== botId) throw new Error('频道不存在');
+    if (!channel || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
     await prisma.subscriptionGateChannel.delete({ where: { id: channelId } });
   }
 
-  static async recheckChannel(botId: number, channelId: number) {
+  static async recheckChannel(inviteLinkId: number, channelId: number) {
     const channel = await prisma.subscriptionGateChannel.findUnique({
       where: { id: channelId },
       include: { gate: true },
     });
-    if (!channel || channel.gate.botId !== botId) throw new Error('频道不存在');
+    if (!channel || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
 
-    const bot = await prisma.bot.findUnique({ where: { id: botId } });
-    if (!bot) throw new Error('Bot 不存在');
+    const link = await prisma.inviteLink.findUnique({
+      where: { id: inviteLinkId },
+      include: { bot: true },
+    });
+    if (!link) throw new Error('链接不存在');
+    const bot = link.bot;
 
     try {
       const verified = channel.isPrivate

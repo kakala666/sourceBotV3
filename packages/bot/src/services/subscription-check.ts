@@ -20,6 +20,7 @@ export type CheckResult =
   | { ok: true }
   | { ok: false; missing: { username: string; title: string; inviteUrl: string }[] };
 
+// key 为 inviteLinkId
 let configCache = new Map<number, GateConfig>();
 let prismaRef: any = realPrisma;
 
@@ -34,7 +35,7 @@ export async function reloadAllGateConfigs(): Promise<void> {
   });
   const next = new Map<number, GateConfig>();
   for (const g of gates) {
-    next.set(g.botId, {
+    next.set(g.inviteLinkId, {
       isEnabled: g.isEnabled,
       promptTemplate: g.promptTemplate,
       channels: g.channels.map((c: any) => ({
@@ -50,8 +51,8 @@ export async function reloadAllGateConfigs(): Promise<void> {
   configCache = next;
 }
 
-export function getGateConfig(botId: number): GateConfig | undefined {
-  return configCache.get(botId);
+export function getGateConfig(inviteLinkId: number): GateConfig | undefined {
+  return configCache.get(inviteLinkId);
 }
 
 function isMember(status: string): boolean {
@@ -69,8 +70,8 @@ function classifyApiError(err: any): 'bot_not_admin' | 'channel_gone' | 'transie
  * 每次翻页都调 Telegram API 检查订阅状态(不使用缓存)。
  * 用户当天退订也能立刻被拦截,代价是每次翻页 N 次 API 调用。
  */
-export async function ensureSubscribed(botId: number, telegramId: bigint, botApi: Api): Promise<CheckResult> {
-  const config = configCache.get(botId);
+export async function ensureSubscribed(inviteLinkId: number, telegramId: bigint, botApi: Api): Promise<CheckResult> {
+  const config = configCache.get(inviteLinkId);
   if (!config?.isEnabled) return { ok: true };
 
   const missing: { username: string; title: string; inviteUrl: string }[] = [];
@@ -86,7 +87,7 @@ export async function ensureSubscribed(botId: number, telegramId: bigint, botApi
     } catch (err: any) {
       const kind = classifyApiError(err);
       if (kind === 'transient') {
-        console.error(`[gate] api_error botId=${botId} channelId=${channel.id} err=${err.message}`);
+        console.error(`[gate] api_error inviteLinkId=${inviteLinkId} channelId=${channel.id} err=${err.message}`);
       } else {
         channel.status = kind;
         await prismaRef.subscriptionGateChannel.update({
