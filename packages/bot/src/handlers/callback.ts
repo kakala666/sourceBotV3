@@ -80,7 +80,13 @@ export async function handleCallback(ctx: Context, botId: number) {
         include: { botUser: true },
       });
       if (!session) return;
-      const gateResult = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
+      // 展开"第 N 个资源"中 N = currentIndex + 1
+      const gateResult = await ensureSubscribed(
+        session.botUser.inviteLinkId,
+        session.botUser.telegramId,
+        ctx.api,
+        currentIndex + 1,
+      );
       if (!gateResult.ok) {
         const config = getGateConfig(session.botUser.inviteLinkId);
         await sendSubscriptionPrompt(
@@ -163,8 +169,8 @@ async function processNextPage(
 
   const { botUser } = session;
 
-  // 强制订阅拦截
-  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
+  // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
+  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex);
   if (!gateResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
     await sendSubscriptionPrompt(ctx, config?.promptTemplate, sessionId, nextIndex, gateResult.missing);
@@ -336,7 +342,13 @@ async function handleSubscriptionRecheck(
     return;
   }
 
-  const result = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
+  // 复核翻页:同 processNextPage 的 position
+  const result = await ensureSubscribed(
+    session.botUser.inviteLinkId,
+    session.botUser.telegramId,
+    ctx.api,
+    nextIndex,
+  );
   if (!result.ok) {
     await ctx.answerCallbackQuery({
       text: '还有未订阅的频道,请检查后再试',
@@ -376,7 +388,13 @@ async function handleRevealRecheck(
     return;
   }
 
-  const result = await ensureSubscribed(session.botUser.inviteLinkId, session.botUser.telegramId, ctx.api);
+  // 复核展开:同 reveal 的 position = currentIndex + 1
+  const result = await ensureSubscribed(
+    session.botUser.inviteLinkId,
+    session.botUser.telegramId,
+    ctx.api,
+    currentIndex + 1,
+  );
   if (!result.ok) {
     await ctx.answerCallbackQuery({
       text: '还有未订阅的频道,请检查后再试',

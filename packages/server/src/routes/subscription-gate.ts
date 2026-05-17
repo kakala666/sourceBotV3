@@ -13,8 +13,10 @@ function serialize(gate: any) {
     inviteLinkId: gate.inviteLinkId,
     isEnabled: gate.isEnabled,
     promptTemplate: gate.promptTemplate,
+    sponsorPositions: gate.sponsorPositions ?? [],
     channels: (gate.channels ?? []).map((c: any) => ({
       id: c.id,
+      kind: c.kind,
       isPrivate: c.isPrivate,
       username: c.username,
       chatId: c.chatId.toString(),
@@ -59,9 +61,9 @@ router.put('/:linkId/subscription-gate', async (req, res) => {
 router.post('/:linkId/subscription-gate/channels', async (req, res) => {
   try {
     const linkId = parseInt(req.params.linkId);
-    const { inviteUrl, chatId } = req.body ?? {};
+    const { inviteUrl, chatId, kind } = req.body ?? {};
     if (!inviteUrl) return fail(res, '请提供 inviteUrl', 400);
-    await SubscriptionGateService.addChannel(linkId, inviteUrl, chatId);
+    await SubscriptionGateService.addChannel(linkId, inviteUrl, chatId, kind ?? 'primary');
     touchReloadSignal();
     const gate = await SubscriptionGateService.getOrCreate(linkId);
     return success(res, serialize(gate), 201);
@@ -95,6 +97,31 @@ router.post('/:linkId/subscription-gate/channels/:channelId/recheck', async (req
       title: channel.title,
       lastCheckAt: channel.lastCheckAt,
     });
+  } catch (err: any) {
+    return fail(res, err.message, 400);
+  }
+});
+
+router.put('/:linkId/subscription-gate/sponsor-positions', async (req, res) => {
+  try {
+    const linkId = parseInt(req.params.linkId);
+    const { positions } = req.body ?? {};
+    const gate = await SubscriptionGateService.updateSponsorPositions(linkId, positions);
+    touchReloadSignal();
+    return success(res, serialize(gate));
+  } catch (err: any) {
+    return fail(res, err.message, 400);
+  }
+});
+
+router.put('/:linkId/subscription-gate/channels/reorder', async (req, res) => {
+  try {
+    const linkId = parseInt(req.params.linkId);
+    const { orderedIds } = req.body ?? {};
+    await SubscriptionGateService.reorderSponsorChannels(linkId, orderedIds);
+    touchReloadSignal();
+    const gate = await SubscriptionGateService.getOrCreate(linkId);
+    return success(res, serialize(gate));
   } catch (err: any) {
     return fail(res, err.message, 400);
   }

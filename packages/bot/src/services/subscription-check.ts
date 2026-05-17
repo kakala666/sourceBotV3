@@ -13,7 +13,9 @@ export interface ChannelCfg {
 export interface GateConfig {
   isEnabled: boolean;
   promptTemplate: string | null;
-  channels: ChannelCfg[];
+  primaryChannels: ChannelCfg[];   // kind = 'primary',每次都查
+  sponsorChannels: ChannelCfg[];   // kind = 'sponsor',按 sortOrder 排序
+  sponsorPositions: number[];      // 与 sponsorChannels 按 index 配对
 }
 
 export type CheckResult =
@@ -35,17 +37,26 @@ export async function reloadAllGateConfigs(): Promise<void> {
   });
   const next = new Map<number, GateConfig>();
   for (const g of gates) {
-    next.set(g.inviteLinkId, {
-      isEnabled: g.isEnabled,
-      promptTemplate: g.promptTemplate,
-      channels: g.channels.map((c: any) => ({
+    const primaryChannels: ChannelCfg[] = [];
+    const sponsorChannels: ChannelCfg[] = [];
+    for (const c of g.channels) {
+      const cfg: ChannelCfg = {
         id: c.id,
         chatId: c.chatId,
         username: c.username,
         title: c.title,
         inviteUrl: c.inviteUrl,
         status: c.status,
-      })),
+      };
+      if (c.kind === 'sponsor') sponsorChannels.push(cfg);
+      else primaryChannels.push(cfg);
+    }
+    next.set(g.inviteLinkId, {
+      isEnabled: g.isEnabled,
+      promptTemplate: g.promptTemplate,
+      primaryChannels,
+      sponsorChannels,
+      sponsorPositions: g.sponsorPositions ?? [],
     });
   }
   configCache = next;
@@ -67,33 +78,66 @@ function classifyApiError(err: any): 'bot_not_admin' | 'channel_gone' | 'transie
 }
 
 /**
- * 每次翻页都调 Telegram API 检查订阅状态(不使用缓存)。
- * 用户当天退订也能立刻被拦截,代价是每次翻页 N 次 API 调用。
+ * 检查指定 channel:返回 true 已订阅,false 未订阅(或频道失效则跳过本次)。
+ * 副作用:失效频道会被标记 status 并 update DB。
  */
-export async function ensureSubscribed(inviteLinkId: number, telegramId: bigint, botApi: Api): Promise<CheckResult> {
+async function checkChannelMembership(
+  inviteLinkId: number,
+  channel: ChannelCfg,
+  telegramId: bigint,
+  botApi: Api,
+): Promise<boolean | 'skipped'> {
+  if (channel.status !== 'ok') return 'skipped';
+  try {
+    const member = await botApi.getChatMember(channel.chatId.toString() as any, Number(telegramId));
+    return isMember(member.status);
+  } catch (err: any) {
+    const kind = classifyApiError(err);
+    if (kind === 'transient') {
+      console.error(`[gate] api_error inviteLinkId=${inviteLinkId} channelId=${channel.id} err=${err.message}`);
+      return 'skipped';
+    }
+    channel.status = kind;
+    await prismaRef.subscriptionGateChannel.update({
+      where: { id: channel.id },
+      data: { status: kind, lastCheckAt: new Date() },
+    });
+    return 'skipped';
+  }
+}
+
+/**
+ * 每次都调 Telegram API 查订阅:
+ *  - 主频道:始终全部检查
+ *  - 赞助商:position 给定且匹配 sponsorPositions[idx] 时,检查 sponsorChannels[idx]
+ */
+export async function ensureSubscribed(
+  inviteLinkId: number,
+  telegramId: bigint,
+  botApi: Api,
+  position?: number,
+): Promise<CheckResult> {
   const config = configCache.get(inviteLinkId);
   if (!config?.isEnabled) return { ok: true };
 
   const missing: { username: string; title: string; inviteUrl: string }[] = [];
 
-  for (const channel of config.channels) {
-    if (channel.status !== 'ok') continue;
+  // 主频道:始终查
+  for (const channel of config.primaryChannels) {
+    const res = await checkChannelMembership(inviteLinkId, channel, telegramId, botApi);
+    if (res === false) {
+      missing.push({ username: channel.username, title: channel.title, inviteUrl: channel.inviteUrl });
+    }
+  }
 
-    try {
-      const member = await botApi.getChatMember(channel.chatId.toString() as any, Number(telegramId));
-      if (!isMember(member.status)) {
+  // 赞助商:仅匹配位置时查一个
+  if (position !== undefined) {
+    const idx = config.sponsorPositions.indexOf(position);
+    if (idx >= 0 && idx < config.sponsorChannels.length) {
+      const channel = config.sponsorChannels[idx];
+      const res = await checkChannelMembership(inviteLinkId, channel, telegramId, botApi);
+      if (res === false) {
         missing.push({ username: channel.username, title: channel.title, inviteUrl: channel.inviteUrl });
-      }
-    } catch (err: any) {
-      const kind = classifyApiError(err);
-      if (kind === 'transient') {
-        console.error(`[gate] api_error inviteLinkId=${inviteLinkId} channelId=${channel.id} err=${err.message}`);
-      } else {
-        channel.status = kind;
-        await prismaRef.subscriptionGateChannel.update({
-          where: { id: channel.id },
-          data: { status: kind, lastCheckAt: new Date() },
-        });
       }
     }
   }

@@ -178,12 +178,13 @@ model SystemSetting {
 }
 
 model SubscriptionGate {
-  id              Int      @id @default(autoincrement())
-  inviteLinkId    Int      @unique
-  isEnabled       Boolean  @default(false)
-  promptTemplate  String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               Int      @id @default(autoincrement())
+  inviteLinkId     Int      @unique
+  isEnabled        Boolean  @default(false)
+  promptTemplate   String?
+  sponsorPositions Int[]    @default([])  // 赞助商触发位置(1-based),与 sponsor channels 按 sortOrder 配对
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   inviteLink InviteLink                @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
   channels   SubscriptionGateChannel[]
@@ -192,6 +193,7 @@ model SubscriptionGate {
 model SubscriptionGateChannel {
   id          Int      @id @default(autoincrement())
   gateId      Int
+  kind        String   @default("primary")  // "primary" | "sponsor"
   isPrivate   Boolean  @default(false)
   username    String?  // 私有频道无 username
   chatId      BigInt
