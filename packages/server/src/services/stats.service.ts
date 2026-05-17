@@ -157,9 +157,9 @@ export class StatsService {
 
   /**
    * 二次操作率:按链接计算
-   * 分母 = 范围内点过 next/reveal 的去重用户(activeUsers)
-   * 分子 = 这些点击用户里 firstSeenAt 落在范围内的(newActiveUsers, 即新用户)
-   * rate = newActiveUsers / activeUsers,反映「点过按钮的用户里新用户占多少」
+   * 分母 = 范围内新增用户(newUsers,无论是否操作)
+   * 分子 = 范围内点过 next/reveal 的去重用户(activeUsers,可能包含老用户)
+   * rate = activeUsers / newUsers (可能 >1)
    */
   static async secondaryOpRate(params: {
     startDate?: string;
@@ -169,9 +169,15 @@ export class StatsService {
     const { start, end } = parseRange(params.startDate, params.endDate);
     const rows = await prisma.$queryRaw<
       { linkId: number; linkName: string; linkCode: string; botName: string;
-        activeUsers: bigint; newActiveUsers: bigint }[]
+        newUsers: bigint; activeUsers: bigint }[]
     >`
-      WITH clickers AS (
+      WITH new_users AS (
+        SELECT id, "inviteLinkId"
+        FROM "BotUser"
+        WHERE "firstSeenAt" BETWEEN ${start} AND ${end}
+          AND (${params.botId ?? null}::int IS NULL OR "botId" = ${params.botId ?? null}::int)
+      ),
+      active_users AS (
         SELECT DISTINCT bc."botUserId", bc."inviteLinkId"
         FROM "ButtonClick" bc
         WHERE bc."clickedAt" BETWEEN ${start} AND ${end}
@@ -183,30 +189,28 @@ export class StatsService {
         l.name AS "linkName",
         l.code AS "linkCode",
         b.name AS "botName",
-        COUNT(DISTINCT c."botUserId")::bigint AS "activeUsers",
-        COUNT(DISTINCT CASE
-          WHEN bu."firstSeenAt" BETWEEN ${start} AND ${end} THEN c."botUserId"
-        END)::bigint AS "newActiveUsers"
+        COUNT(DISTINCT nu.id)::bigint AS "newUsers",
+        COUNT(DISTINCT au."botUserId")::bigint AS "activeUsers"
       FROM "InviteLink" l
       JOIN "Bot" b ON b.id = l."botId"
-      JOIN clickers c ON c."inviteLinkId" = l.id
-      JOIN "BotUser" bu ON bu.id = c."botUserId"
+      LEFT JOIN new_users nu ON nu."inviteLinkId" = l.id
+      LEFT JOIN active_users au ON au."inviteLinkId" = l.id
       WHERE (${params.botId ?? null}::int IS NULL OR l."botId" = ${params.botId ?? null}::int)
       GROUP BY l.id, l.name, l.code, b.name
-      HAVING COUNT(DISTINCT c."botUserId") > 0
+      HAVING (COUNT(DISTINCT nu.id) > 0 OR COUNT(DISTINCT au."botUserId") > 0)
       ORDER BY "activeUsers" DESC;
     `;
     return rows.map((r) => {
+      const newUsers = Number(r.newUsers);
       const activeUsers = Number(r.activeUsers);
-      const newActiveUsers = Number(r.newActiveUsers);
       return {
         linkId: r.linkId,
         linkName: r.linkName,
         linkCode: r.linkCode,
         botName: r.botName,
+        newUsers,
         activeUsers,
-        newActiveUsers,
-        rate: activeUsers > 0 ? newActiveUsers / activeUsers : 0,
+        rate: newUsers > 0 ? activeUsers / newUsers : 0,
       };
     });
   }

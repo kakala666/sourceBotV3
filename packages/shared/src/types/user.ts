@@ -61,9 +61,9 @@ export interface SecondaryOpRateStat {
   linkName: string;
   linkCode: string;
   botName: string;
-  activeUsers: number;        // 范围内点过 next/reveal 的去重用户(分母)
-  newActiveUsers: number;     // 这些点击用户中范围内新注册的(分子)
-  rate: number;               // newActiveUsers / activeUsers, 0-1
+  newUsers: number;           // 范围内新增用户(分母)
+  activeUsers: number;        // 范围内点过 next/reveal 的去重用户(分子,可含老用户)
+  rate: number;               // activeUsers / newUsers, 可能 >1
 }
 
 export interface LatencySummary {

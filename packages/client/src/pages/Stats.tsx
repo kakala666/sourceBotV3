@@ -228,23 +228,24 @@ export default function Stats() {
     { title: '链接名称', dataIndex: 'linkName', key: 'linkName' },
     { title: 'Code', dataIndex: 'linkCode', key: 'linkCode' },
     {
-      title: '操作过的用户(分母)',
+      title: '新增用户(分母)',
+      dataIndex: 'newUsers',
+      key: 'newUsers',
+      sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.newUsers - b.newUsers,
+    },
+    {
+      title: '有二次操作的用户(分子)',
       dataIndex: 'activeUsers',
       key: 'activeUsers',
       sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.activeUsers - b.activeUsers,
     },
     {
-      title: '其中新用户(分子)',
-      dataIndex: 'newActiveUsers',
-      key: 'newActiveUsers',
-      sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.newActiveUsers - b.newActiveUsers,
-    },
-    {
-      title: '新用户占比',
+      title: '二次操作率',
       dataIndex: 'rate',
       key: 'rate',
       sorter: (a: SecondaryOpRateStat, b: SecondaryOpRateStat) => a.rate - b.rate,
-      render: (v: number) => `${(v * 100).toFixed(1)}%`,
+      render: (_: number, r: SecondaryOpRateStat) =>
+        r.newUsers === 0 ? '—' : `${(r.rate * 100).toFixed(1)}%`,
     },
   ];
 
@@ -343,7 +344,7 @@ export default function Stats() {
       </Card>
 
       {/* 二次操作率 */}
-      <Card title="二次操作率(点过 next/reveal 的用户中,新用户占比)" style={{ marginBottom: 24 }}>
+      <Card title="二次操作率(有二次操作的用户 ÷ 新增用户,可能 >100%)" style={{ marginBottom: 24 }}>
         <Table
           rowKey="linkId"
           columns={secondaryColumns}
