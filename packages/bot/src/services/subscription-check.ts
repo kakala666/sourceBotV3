@@ -4,7 +4,8 @@ import realPrisma from '../prisma';
 export interface ChannelCfg {
   id: number;
   chatId: bigint;
-  username: string;
+  /** 公开频道才有;私有频道为 null */
+  username: string | null;
   title: string;
   inviteUrl: string;
   status: string;
@@ -20,7 +21,7 @@ export interface GateConfig {
 
 export type CheckResult =
   | { ok: true }
-  | { ok: false; missing: { username: string; title: string; inviteUrl: string }[] };
+  | { ok: false; missing: { username: string | null; title: string; inviteUrl: string }[] };
 
 // key 为 inviteLinkId
 let configCache = new Map<number, GateConfig>();
@@ -120,7 +121,7 @@ export async function ensureSubscribed(
   const config = configCache.get(inviteLinkId);
   if (!config?.isEnabled) return { ok: true };
 
-  const missing: { username: string; title: string; inviteUrl: string }[] = [];
+  const missing: { username: string | null; title: string; inviteUrl: string }[] = [];
 
   // 主频道:始终查
   for (const channel of config.primaryChannels) {
