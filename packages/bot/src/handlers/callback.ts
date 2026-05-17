@@ -1,6 +1,6 @@
 import type { Context } from 'grammy';
 import prisma from '../prisma';
-import { getActiveSession, advanceSession, completeSession } from '../services/session';
+import { advanceSession, completeSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';

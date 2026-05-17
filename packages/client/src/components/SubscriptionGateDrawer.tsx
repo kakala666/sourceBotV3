@@ -291,7 +291,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
       onClose={onClose}
       title={`强制订阅 — 链接: ${linkName}`}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       {loading && !gate ? '加载中...' : (
         <>

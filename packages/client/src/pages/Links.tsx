@@ -165,7 +165,7 @@ export default function Links() {
         open={modalOpen}
         onOk={handleSubmit}
         onCancel={() => { setModalOpen(false); setEditingLink(null); form.resetFields(); }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
