@@ -24,47 +24,86 @@ export type CheckResult =
   | { ok: false; missing: { username: string | null; title: string; inviteUrl: string }[] };
 
 // key 为 inviteLinkId
-let configCache = new Map<number, GateConfig>();
+let configCache = new Map<number, GateConfig>();       // key: inviteLinkId
+let botGateCache = new Map<number, GateConfig>();      // key: botId
+let linkToBotMap = new Map<number, number>();          // inviteLinkId → botId
 let prismaRef: any = realPrisma;
 
 /** 仅供测试使用 */
-export function _setCacheForTests(c: Map<number, GateConfig>) { configCache = c; }
+export function _setCacheForTests(c: Map<number, GateConfig>) {
+  configCache = c;
+  botGateCache = new Map();
+  linkToBotMap = new Map();
+}
+/** 仅供测试使用 */
+export function _setBotGateCacheForTests(c: Map<number, GateConfig>, ltb: Map<number, number>) {
+  botGateCache = c;
+  linkToBotMap = ltb;
+}
 /** 仅供测试使用 */
 export function _setPrismaForTests(p: any) { prismaRef = p; }
 
 export async function reloadAllGateConfigs(): Promise<void> {
+  // 1. link → bot 映射
+  const links = await prismaRef.inviteLink.findMany({
+    select: { id: true, botId: true },
+  });
+  const nextLinkToBot = new Map<number, number>();
+  for (const l of links) nextLinkToBot.set(l.id, l.botId);
+
+  // 2. 加载 link gates
   const gates = await prismaRef.subscriptionGate.findMany({
     include: { channels: { orderBy: { sortOrder: 'asc' } } },
   });
-  const next = new Map<number, GateConfig>();
+  const nextLinkCache = new Map<number, GateConfig>();
   for (const g of gates) {
-    const primaryChannels: ChannelCfg[] = [];
-    const sponsorChannels: ChannelCfg[] = [];
-    for (const c of g.channels) {
-      const cfg: ChannelCfg = {
-        id: c.id,
-        chatId: c.chatId,
-        username: c.username,
-        title: c.title,
-        inviteUrl: c.inviteUrl,
-        status: c.status,
-      };
-      if (c.kind === 'sponsor') sponsorChannels.push(cfg);
-      else primaryChannels.push(cfg);
-    }
-    next.set(g.inviteLinkId, {
-      isEnabled: g.isEnabled,
-      promptTemplate: g.promptTemplate,
-      primaryChannels,
-      sponsorChannels,
-      sponsorPositions: g.sponsorPositions ?? [],
-    });
+    nextLinkCache.set(g.inviteLinkId, buildGateConfig(g));
   }
-  configCache = next;
+
+  // 3. 加载 bot gates
+  const botGates = await prismaRef.botSubscriptionGate.findMany({
+    include: { channels: { orderBy: { sortOrder: 'asc' } } },
+  });
+  const nextBotCache = new Map<number, GateConfig>();
+  for (const g of botGates) {
+    nextBotCache.set(g.botId, buildGateConfig(g));
+  }
+
+  configCache = nextLinkCache;
+  botGateCache = nextBotCache;
+  linkToBotMap = nextLinkToBot;
+}
+
+function buildGateConfig(g: any): GateConfig {
+  const primaryChannels: ChannelCfg[] = [];
+  const sponsorChannels: ChannelCfg[] = [];
+  for (const c of g.channels) {
+    const cfg: ChannelCfg = {
+      id: c.id,
+      chatId: c.chatId,
+      username: c.username,
+      title: c.title,
+      inviteUrl: c.inviteUrl,
+      status: c.status,
+    };
+    if (c.kind === 'sponsor') sponsorChannels.push(cfg);
+    else primaryChannels.push(cfg);
+  }
+  return {
+    isEnabled: g.isEnabled,
+    promptTemplate: g.promptTemplate,
+    primaryChannels,
+    sponsorChannels,
+    sponsorPositions: g.sponsorPositions ?? [],
+  };
 }
 
 export function getGateConfig(inviteLinkId: number): GateConfig | undefined {
-  return configCache.get(inviteLinkId);
+  const linkGate = configCache.get(inviteLinkId);
+  if (linkGate) return linkGate;
+  const botId = linkToBotMap.get(inviteLinkId);
+  if (botId === undefined) return undefined;
+  return botGateCache.get(botId);
 }
 
 function isMember(status: string): boolean {
@@ -118,7 +157,7 @@ export async function ensureSubscribed(
   botApi: Api,
   position?: number,
 ): Promise<CheckResult> {
-  const config = configCache.get(inviteLinkId);
+  const config = getGateConfig(inviteLinkId);
   if (!config?.isEnabled) return { ok: true };
 
   const missing: { username: string | null; title: string; inviteUrl: string }[] = [];
