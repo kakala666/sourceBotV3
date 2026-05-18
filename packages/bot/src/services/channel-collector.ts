@@ -12,6 +12,40 @@ export const ACTIVATION_COMMAND = 'kakaco';
 /** 媒体组消息聚合 debounce */
 const MEDIA_GROUP_DEBOUNCE_MS = 2000;
 
+/**
+ * 频道下载并发开关 - 来自 env CHANNEL_DOWNLOAD_CONCURRENCY
+ *   - 未配置 / 0 / 1:串行(等同历史行为)
+ *   - N >= 2:启用 semaphore,最多同时 N 个 downloadCurrentMedia 任务
+ */
+const CHANNEL_DOWNLOAD_CONCURRENCY = (() => {
+  const raw = parseInt(process.env.CHANNEL_DOWNLOAD_CONCURRENCY || '1', 10);
+  return Number.isFinite(raw) && raw > 1 ? raw : 1;
+})();
+
+/** semaphore 状态(仅当 CHANNEL_DOWNLOAD_CONCURRENCY > 1 时实际起作用) */
+let activeDownloads = 0;
+const downloadWaitQueue: (() => void)[] = [];
+
+function acquireDownloadSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    if (activeDownloads < CHANNEL_DOWNLOAD_CONCURRENCY) {
+      activeDownloads++;
+      resolve();
+    } else {
+      downloadWaitQueue.push(() => {
+        activeDownloads++;
+        resolve();
+      });
+    }
+  });
+}
+
+function releaseDownloadSlot() {
+  activeDownloads--;
+  const next = downloadWaitQueue.shift();
+  if (next) next();
+}
+
 const UPLOADS_ROOT = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
   : path.resolve(process.cwd(), 'uploads');
@@ -193,10 +227,19 @@ async function downloadCurrentMedia(ctx: Context, botId: number): Promise<Downlo
   return { type, fileName: destFileName, originalFileName, mimeType, fileSize };
 }
 
+async function downloadCurrentMediaThrottled(ctx: Context, botId: number): Promise<DownloadedFile | null> {
+  await acquireDownloadSlot();
+  try {
+    return await downloadCurrentMedia(ctx, botId);
+  } finally {
+    releaseDownloadSlot();
+  }
+}
+
 /* ============== 单条 photo / video / document ============== */
 
 async function persistSingleMedia(ctx: Context, botId: number, groupId: number, post: any) {
-  const file = await downloadCurrentMedia(ctx, botId);
+  const file = await downloadCurrentMediaThrottled(ctx, botId);
   if (!file) return;
 
   const resourceType = file.type === 'video' ? 'video' : 'photo';
@@ -231,7 +274,7 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
 
 async function bufferMediaGroupMessage(ctx: Context, botId: number, groupId: number, post: any) {
   // 先下载,避免在 debounce 触发时丢失 ctx
-  const file = await downloadCurrentMedia(ctx, botId);
+  const file = await downloadCurrentMediaThrottled(ctx, botId);
   if (!file) return;
 
   const key = `${post.chat.id}:${post.media_group_id}`;
