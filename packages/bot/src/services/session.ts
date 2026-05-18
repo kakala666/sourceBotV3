@@ -1,4 +1,6 @@
 import prisma from '../prisma';
+import { loadContentBindings } from './content';
+import { loadFavoriteList } from './favorite-list';
 
 /**
  * 记录/更新 BotUser，返回 botUser 记录
@@ -36,7 +38,10 @@ export async function upsertBotUser(
 /**
  * 创建或重置用户会话（currentIndex=0）
  */
-export async function resetSession(botUserId: number) {
+export async function resetSession(
+  botUserId: number,
+  options?: { mode?: 'link' | 'favorite' | 'single'; payload?: any },
+) {
   // 将该用户所有未完成会话标记为已完成
   await prisma.userSession.updateMany({
     where: { botUserId, isCompleted: false },
@@ -45,7 +50,12 @@ export async function resetSession(botUserId: number) {
 
   // 创建新会话
   return prisma.userSession.create({
-    data: { botUserId, currentIndex: 0 },
+    data: {
+      botUserId,
+      currentIndex: 0,
+      mode: options?.mode ?? 'link',
+      payload: options?.payload ?? null,
+    },
   });
 }
 
@@ -77,4 +87,42 @@ export async function completeSession(sessionId: number) {
     where: { id: sessionId },
     data: { isCompleted: true, updatedAt: new Date() },
   });
+}
+
+export interface SequenceItem {
+  resource: {
+    id: number;
+    type: string;
+    caption: string | null;
+    mediaFiles: any[];
+  };
+  buttons: { text: string; url: string }[] | null;
+  sortOrder: number;
+}
+
+/**
+ * 根据 session.mode 取浏览序列。
+ *   link     → loadContentBindings(botUser.inviteLinkId)
+ *   favorite → loadFavoriteList(botUser.id)
+ *   single   → [{ resource: <payload.resourceId 对应资源>, buttons: null, sortOrder: 0 }]
+ */
+export async function loadSequenceForSession(session: {
+  id: number;
+  mode: string;
+  payload: any;
+  botUser: { id: number; inviteLinkId: number };
+}): Promise<SequenceItem[]> {
+  if (session.mode === 'favorite') {
+    return loadFavoriteList(session.botUser.id);
+  }
+  if (session.mode === 'single') {
+    const resourceId = session.payload?.resourceId;
+    if (!resourceId) return [];
+    const r = await prisma.resource.findUnique({
+      where: { id: resourceId },
+      include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+    });
+    return r ? [{ resource: r as any, buttons: null, sortOrder: 0 }] : [];
+  }
+  return loadContentBindings(session.botUser.inviteLinkId) as any;
 }
