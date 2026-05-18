@@ -18,7 +18,10 @@ export default function Settings() {
       setLoading(true);
       try {
         const { data } = await api.get<ApiResponse<SystemSettings>>('/settings');
-        const defaults: Partial<SystemSettings> = { searchMoreUrl: 'https://t.me/ssejqr88bot' };
+        const defaults: Partial<SystemSettings> = {
+          searchMoreUrl: 'https://t.me/ssejqr88bot',
+          welcomeText: '欢迎使用 👋\n使用下方按钮开启探索',
+        };
         if (data.data) form.setFieldsValue({ ...defaults, ...data.data });
       } catch {
         message.error('获取设置失败');
@@ -116,6 +119,14 @@ export default function Settings() {
             extra="翻页按钮上方的「🔍 搜索更多资源」按钮跳转地址,全局唯一"
           >
             <Input placeholder="https://t.me/ssejqr88bot" style={{ width: 400 }} />
+          </Form.Item>
+
+          <Form.Item
+            label="欢迎语(常驻键盘文案)"
+            name="welcomeText"
+            extra="用户 /start 时显示在底部 reply keyboard 之前的欢迎文字"
+          >
+            <TextArea rows={2} placeholder="欢迎使用 👋&#10;使用下方按钮开启探索" style={{ width: 400 }} />
           </Form.Item>
 
           <Divider>登录验证设置</Divider>
