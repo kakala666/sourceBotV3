@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import {
   ensureSubscribed,
   _setCacheForTests,
+  _setBotGateCacheForTests,
   _setPrismaForTests,
   type ChannelCfg,
   type GateConfig,
@@ -123,6 +124,51 @@ function makeConfig(opts: Partial<GateConfig> & Pick<GateConfig, 'isEnabled'>): 
   assert.equal(r.ok, true);
   assert.equal(prismaChannelUpdates.length, 1);
   assert.equal(prismaChannelUpdates[0].data.status, 'bot_not_admin');
+
+  // case 10: link 无 gate → fallback 到 bot 全局 gate
+  {
+    const botChannel: ChannelCfg = {
+      id: 200, chatId: -8000n, username: 'gb', title: 'G',
+      inviteUrl: 'https://t.me/gb', status: 'ok',
+    };
+    const linkCache = new Map<number, GateConfig>(); // 空(link 1000 无 gate)
+    const botCache = new Map<number, GateConfig>([[
+      99,
+      {
+        isEnabled: true,
+        promptTemplate: null,
+        primaryChannels: [botChannel],
+        sponsorChannels: [],
+        sponsorPositions: [],
+      },
+    ]]);
+    const ltbMap = new Map<number, number>([[1000, 99]]); // link 1000 属于 bot 99
+    _setCacheForTests(linkCache);
+    _setBotGateCacheForTests(botCache, ltbMap);
+
+    r = await ensureSubscribed(1000, 5000n, makeBotApi({ '-8000:5000': 'left' }));
+    assert.equal(r.ok, false);
+    if (!r.ok) {
+      assert.equal(r.missing.length, 1);
+      assert.equal(r.missing[0].username, 'gb');
+    }
+  }
+
+  // case 11: link 有 gate 但不启用 → 不回退 bot,直接 ok
+  {
+    _setCacheForTests(new Map([[2000, makeConfig({ isEnabled: false })]]));
+    _setBotGateCacheForTests(
+      new Map([[99, makeConfig({
+        isEnabled: true,
+        primaryChannels: [{
+          id: 200, chatId: -8000n, username: 'gb', title: 'G', inviteUrl: 'x', status: 'ok',
+        }],
+      })]]),
+      new Map([[2000, 99]]),
+    );
+    r = await ensureSubscribed(2000, 5000n, makeBotApi({ '-8000:5000': 'left' }));
+    assert.equal(r.ok, true);
+  }
 
   console.log('✓ ensureSubscribed tests passed (primary + sponsor)');
 })().catch((err) => {
