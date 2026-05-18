@@ -1,6 +1,6 @@
 import type { Context } from 'grammy';
 import prisma from '../prisma';
-import { advanceSession, completeSession } from '../services/session';
+import { advanceSession, completeSession, loadSequenceForSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
@@ -260,15 +260,21 @@ async function processNextPage(
   }
 
   // 查询邀请链接的内容和广告
-  const contentBindings = await loadContentBindings(botUser.inviteLinkId);
+  const sequence = await loadSequenceForSession({
+    id: session.id, mode: session.mode, payload: session.payload, botUser,
+  });
   const adBindings = await loadAdBindings(botUser.inviteLinkId);
-  const totalContent = contentBindings.length;
+  const totalContent = sequence.length;
 
   // 索引越界 → 预览结束
-  if (nextIndex >= totalContent) {
+  if (nextIndex >= sequence.length) {
     await completeSession(sessionId);
-    const endContent = await getEndContent();
-    await sendEndContent(ctx, endContent);
+    if (session.mode === 'favorite') {
+      await ctx.reply('你的收藏全部看完了 🎯');
+    } else {
+      const endContent = await getEndContent();
+      await sendEndContent(ctx, endContent);
+    }
     return;
   }
 
@@ -306,7 +312,7 @@ async function processNextPage(
   await advanceSession(sessionId, nextIndex);
 
   // 发送下一条资源
-  const binding = contentBindings[nextIndex];
+  const binding = sequence[nextIndex];
   if (!binding?.resource) return;
 
   // 隐藏 mediaFile 默认不发,有隐藏的就在键盘加"展开更多"
