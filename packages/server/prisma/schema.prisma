@@ -31,6 +31,7 @@ model Bot {
   fileIds          BotFileId[]
   botUsers         BotUser[]
   channelGroups    ResourceGroup[]   @relation("ChannelGroupSourceBot")
+  subscriptionGate BotSubscriptionGate?
 }
 
 model InviteLink {
@@ -236,7 +237,8 @@ model SubscriptionGate {
 
 model SubscriptionGateChannel {
   id          Int      @id @default(autoincrement())
-  gateId      Int
+  gateId      Int?
+  botGateId   Int?
   kind        String   @default("primary")  // "primary" | "sponsor"
   isPrivate   Boolean  @default(false)
   username    String?  // 私有频道无 username
@@ -249,7 +251,8 @@ model SubscriptionGateChannel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  gate SubscriptionGate @relation(fields: [gateId], references: [id], onDelete: Cascade)
+  gate    SubscriptionGate?    @relation(fields: [gateId], references: [id], onDelete: Cascade)
+  botGate BotSubscriptionGate? @relation(fields: [botGateId], references: [id], onDelete: Cascade)
 
   @@unique([gateId, chatId])
 }
@@ -263,4 +266,17 @@ model SubscriptionCheckPass {
 
   @@unique([botId, telegramId, passDate])
   @@index([passDate])
+}
+
+model BotSubscriptionGate {
+  id               Int      @id @default(autoincrement())
+  botId            Int      @unique
+  isEnabled        Boolean  @default(false)
+  promptTemplate   String?
+  sponsorPositions Int[]    @default([])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  bot      Bot                       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  channels SubscriptionGateChannel[]
 }

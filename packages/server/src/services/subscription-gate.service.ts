@@ -108,7 +108,7 @@ export class SubscriptionGateService {
       where: { id: channelId },
       include: { gate: true },
     });
-    if (!channel || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
+    if (!channel || !channel.gate || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
 
     if (channel.kind !== 'sponsor') {
       await prisma.subscriptionGateChannel.delete({ where: { id: channelId } });
@@ -128,7 +128,7 @@ export class SubscriptionGateService {
     await prisma.$transaction([
       prisma.subscriptionGateChannel.delete({ where: { id: channelId } }),
       prisma.subscriptionGate.update({
-        where: { id: channel.gateId },
+        where: { id: channel.gateId! },
         data: { sponsorPositions: positions },
       }),
     ]);
@@ -139,7 +139,7 @@ export class SubscriptionGateService {
       where: { id: channelId },
       include: { gate: true },
     });
-    if (!channel || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
+    if (!channel || !channel.gate || channel.gate.inviteLinkId !== inviteLinkId) throw new Error('频道不存在');
 
     const link = await prisma.inviteLink.findUnique({
       where: { id: inviteLinkId },
