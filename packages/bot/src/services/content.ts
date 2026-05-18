@@ -71,6 +71,13 @@ export async function getSearchMoreUrl(): Promise<string> {
 }
 
 /**
+ * 获取欢迎语(/start 时显示在 reply keyboard 旁边)
+ */
+export async function getWelcomeText(): Promise<string> {
+  return getSystemSetting<string>('welcomeText', '欢迎使用 👋\n使用下方按钮开启探索');
+}
+
+/**
  * 获取自动回复文本（未启用或未配置时返回 null）
  */
 export async function getAutoReplyAd(): Promise<string | null> {
