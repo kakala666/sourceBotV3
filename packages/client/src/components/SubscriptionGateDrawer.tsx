@@ -22,10 +22,17 @@ import api from '@/services/api';
 const { Text, Paragraph } = Typography;
 
 interface Props {
-  linkId: number | null;
-  linkName: string;
+  /** 'link' = 配某条邀请链接;'bot' = 配机器人全局 */
+  level?: 'link' | 'bot';
+  /** linkId(level=link) 或 botId(level=bot) */
+  targetId?: number | null;
+  /** 显示名称(用于 Drawer 标题) */
+  targetName?: string;
   open: boolean;
   onClose: () => void;
+  /** 兼容旧 caller(等价 level='link' + targetId/targetName) */
+  linkId?: number | null;
+  linkName?: string;
 }
 
 const STATUS_TAG: Record<SubscriptionGateChannelInfo['status'], { color: string; text: string }> = {
@@ -52,7 +59,22 @@ function SortableSponsorRow({ id, children }: { id: number; children: React.Reac
   );
 }
 
-export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose }: Props) {
+export default function SubscriptionGateDrawer({
+  level,
+  targetId,
+  targetName,
+  open,
+  onClose,
+  linkId,
+  linkName,
+}: Props) {
+  const effectiveLevel: 'link' | 'bot' = level ?? 'link';
+  const effectiveTargetId = targetId ?? linkId ?? null;
+  const effectiveTargetName = targetName ?? linkName ?? '';
+  const basePath = effectiveLevel === 'bot'
+    ? `/bots/${effectiveTargetId}/subscription-gate`
+    : `/links/${effectiveTargetId}/subscription-gate`;
+
   const [gate, setGate] = useState<SubscriptionGateInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [kind, setKind] = useState<ChannelKind>('primary');
@@ -78,10 +100,10 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   );
 
   const reload = async () => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     setLoading(true);
     try {
-      const { data } = await api.get<ApiResponse<SubscriptionGateInfo>>(`/links/${linkId}/subscription-gate`);
+      const { data } = await api.get<ApiResponse<SubscriptionGateInfo>>(basePath);
       if (data.data) {
         setGate(data.data);
         setTemplate(data.data.promptTemplate ?? '');
@@ -95,7 +117,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   useEffect(() => {
-    if (open && linkId) reload();
+    if (open && effectiveTargetId) reload();
     if (!open) {
       setGate(null);
       setNewUrl('');
@@ -106,13 +128,13 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
       setPositionsText('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, linkId]);
+  }, [open, effectiveTargetId]);
 
   const toggleEnabled = async (checked: boolean) => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     try {
       const { data } = await api.put<ApiResponse<SubscriptionGateInfo>>(
-        `/links/${linkId}/subscription-gate`,
+        basePath,
         { isEnabled: checked }
       );
       if (data.data) setGate(data.data);
@@ -123,7 +145,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const addChannel = async () => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     if (!newUrl.trim()) {
       setAddError(mode === 'private' ? '请填邀请链接(用户加入用)' : '请填频道链接');
       return;
@@ -140,7 +162,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
         kind,
       };
       if (mode === 'private') body.chatId = newChatId.trim();
-      await api.post(`/links/${linkId}/subscription-gate/channels`, body);
+      await api.post(`${basePath}/channels`, body);
       setNewUrl('');
       setNewChatId('');
       message.success('频道已添加');
@@ -153,9 +175,9 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const removeChannel = async (id: number) => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     try {
-      await api.delete(`/links/${linkId}/subscription-gate/channels/${id}`);
+      await api.delete(`${basePath}/channels/${id}`);
       message.success('已移除');
       await reload();
     } catch {
@@ -164,9 +186,9 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const recheckChannel = async (id: number) => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     try {
-      await api.post(`/links/${linkId}/subscription-gate/channels/${id}/recheck`);
+      await api.post(`${basePath}/channels/${id}/recheck`);
       message.success('已重新验证');
       await reload();
     } catch (err: any) {
@@ -175,10 +197,10 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const saveTemplate = async () => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     setTemplateSaving(true);
     try {
-      await api.put(`/links/${linkId}/subscription-gate`, { promptTemplate: template });
+      await api.put(basePath, { promptTemplate: template });
       message.success('提示文案已保存');
     } catch {
       message.error('保存失败');
@@ -188,7 +210,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const savePositions = async () => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     const raw = positionsText.trim();
     if (!POSITION_REGEX.test(raw)) {
       message.error('格式错误:请用英文逗号分隔正整数,不要空格');
@@ -208,7 +230,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
     setPositionsSaving(true);
     try {
       const { data } = await api.put<ApiResponse<SubscriptionGateInfo>>(
-        `/links/${linkId}/subscription-gate/sponsor-positions`,
+        `${basePath}/sponsor-positions`,
         { positions: arr },
       );
       if (data.data) {
@@ -224,7 +246,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
   };
 
   const handleSponsorDragEnd = async (e: DragEndEvent) => {
-    if (!linkId) return;
+    if (!effectiveTargetId) return;
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldIdx = sponsorChannels.findIndex((c) => c.id === active.id);
@@ -245,7 +267,7 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
     );
     try {
       const { data } = await api.put<ApiResponse<SubscriptionGateInfo>>(
-        `/links/${linkId}/subscription-gate/channels/reorder`,
+        `${basePath}/channels/reorder`,
         { orderedIds: reordered.map((c) => c.id) },
       );
       if (data.data) setGate(data.data);
@@ -289,7 +311,9 @@ export default function SubscriptionGateDrawer({ linkId, linkName, open, onClose
     <Drawer
       open={open}
       onClose={onClose}
-      title={`强制订阅 — 链接: ${linkName}`}
+      title={effectiveLevel === 'bot'
+        ? `全局订阅配置 — 机器人: ${effectiveTargetName}`
+        : `强制订阅 — 链接: ${effectiveTargetName}`}
       width={560}
       destroyOnHidden
     >
