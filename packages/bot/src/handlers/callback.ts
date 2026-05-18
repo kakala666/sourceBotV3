@@ -5,7 +5,7 @@ import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
-import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave } from '../services/channel-collector';
+import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
 
 /** 防重复点击：记录正在处理中的 sessionId */
@@ -105,6 +105,36 @@ export async function handleCallback(ctx: Context, botId: number) {
       console.error('[callback] medsave 处理失败:', err.message);
       await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
     }
+    return;
+  }
+
+  // 重设:翻页
+  const resetPageMatch = data.match(/^reset_page:(\d+):(\d+)$/);
+  if (resetPageMatch) {
+    try {
+      await handleResetPage(ctx, parseInt(resetPageMatch[1], 10), parseInt(resetPageMatch[2], 10));
+    } catch (err: any) {
+      console.error('[callback] reset_page 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 重设:选某条
+  const resetPickMatch = data.match(/^reset_pick:(\d+)$/);
+  if (resetPickMatch) {
+    try {
+      await handleResetPick(ctx, botId, parseInt(resetPickMatch[1], 10));
+    } catch (err: any) {
+      console.error('[callback] reset_pick 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // 重设键盘的占位按钮(当前页 / 边界)
+  if (data === 'reset_noop') {
+    await ctx.answerCallbackQuery().catch(() => {});
     return;
   }
 

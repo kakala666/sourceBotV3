@@ -9,6 +9,12 @@ import { getVideoMeta, generateThumbnail } from '../utils/video';
 /** 激活指令(精确匹配,trim 后) */
 export const ACTIVATION_COMMAND = 'kakaco';
 
+/** 重设指令(精确匹配,trim 后) — 弹分页键盘选某条资源重新设置可见性 */
+const RESET_COMMAND = '重设';
+
+/** 重设键盘每页条数 */
+const RESET_PAGE_SIZE = 20;
+
 /** 媒体组消息聚合 debounce */
 const MEDIA_GROUP_DEBOUNCE_MS = 2000;
 
@@ -107,6 +113,14 @@ export async function handleChannelPost(ctx: Context, botId: number) {
   const group = await prisma.resourceGroup.findUnique({ where: { channelChatId } });
   if (!group) return;
   if (group.sourceBotId !== botId) return;  // 防多 bot 重复入库
+
+  // 2.5) 重设指令:弹分页键盘选某条资源重发 + 可见性键盘
+  if (text === RESET_COMMAND) {
+    await handleResetCommand(ctx, group.id).catch((err) => {
+      console.error('[channel-collector] 重设指令处理失败:', err.message);
+    });
+    return;
+  }
 
   // 必须有 media 才处理
   const hasMedia = !!(post.photo || post.video || post.document);
@@ -575,4 +589,91 @@ export async function handleMediaVisibilityToggle(
 export async function handleMediaVisibilitySave(ctx: Context, _resourceId: number) {
   await ctx.answerCallbackQuery({ text: '✓ 已保存' }).catch(() => {});
   await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
+}
+
+/* ============== 重设指令:分页键盘 ============== */
+
+/**
+ * 频道内发送「重设」后:列出本分类所有资源,弹分页键盘。
+ * 序号按 createdAt asc(和频道里发的顺序一致,最早的是 1)。
+ */
+async function handleResetCommand(ctx: Context, groupId: number) {
+  const total = await prisma.resource.count({ where: { groupId } });
+  if (total === 0) {
+    await ctx.reply('当前分类还没有资源').catch(() => {});
+    return;
+  }
+  const kb = await buildResetPickerKeyboard(groupId, 0, total);
+  const totalPages = Math.ceil(total / RESET_PAGE_SIZE);
+  await ctx.reply(`选择要重设的资源(共 ${total} 条,第 1/${totalPages} 页):`, { reply_markup: kb }).catch(() => {});
+}
+
+/**
+ * 构造第 page 页(0-based)的键盘。
+ * 每页 RESET_PAGE_SIZE 条 = 5 行 × 4 列;底部一行翻页(上/页码/下)。
+ */
+async function buildResetPickerKeyboard(groupId: number, page: number, totalKnown?: number) {
+  const total = totalKnown ?? await prisma.resource.count({ where: { groupId } });
+  const totalPages = Math.max(1, Math.ceil(total / RESET_PAGE_SIZE));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+
+  const pageItems = await prisma.resource.findMany({
+    where: { groupId },
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+    skip: safePage * RESET_PAGE_SIZE,
+    take: RESET_PAGE_SIZE,
+  });
+
+  const kb = new InlineKeyboard();
+  for (let i = 0; i < pageItems.length; i++) {
+    const ordinal = safePage * RESET_PAGE_SIZE + i + 1;
+    kb.text(String(ordinal), `reset_pick:${pageItems[i].id}`);
+    if ((i + 1) % 4 === 0) kb.row();
+  }
+  if (pageItems.length % 4 !== 0) kb.row();
+
+  if (totalPages > 1) {
+    kb.text(safePage > 0 ? '⬅️ 上一页' : '·', safePage > 0 ? `reset_page:${groupId}:${safePage - 1}` : 'reset_noop');
+    kb.text(`${safePage + 1}/${totalPages}`, 'reset_noop');
+    kb.text(safePage + 1 < totalPages ? '下一页 ➡️' : '·', safePage + 1 < totalPages ? `reset_page:${groupId}:${safePage + 1}` : 'reset_noop');
+  }
+  return kb;
+}
+
+/** 翻页:编辑当前消息的 reply_markup + 文本 */
+export async function handleResetPage(ctx: Context, groupId: number, page: number) {
+  const total = await prisma.resource.count({ where: { groupId } });
+  if (total === 0) {
+    await ctx.answerCallbackQuery({ text: '该分类已无资源', show_alert: true }).catch(() => {});
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
+    return;
+  }
+  const totalPages = Math.max(1, Math.ceil(total / RESET_PAGE_SIZE));
+  const safePage = Math.max(0, Math.min(page, totalPages - 1));
+  const kb = await buildResetPickerKeyboard(groupId, safePage, total);
+  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.editMessageText(`选择要重设的资源(共 ${total} 条,第 ${safePage + 1}/${totalPages} 页):`, { reply_markup: kb }).catch(() => {});
+}
+
+/** 选中某条:删除选择消息 → 重发完整资源(含已隐藏项)→ 发可见性键盘 */
+export async function handleResetPick(ctx: Context, botId: number, resourceId: number) {
+  const resource = await prisma.resource.findUnique({
+    where: { id: resourceId },
+    include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+  });
+  if (!resource) {
+    await ctx.answerCallbackQuery({ text: '资源已不存在', show_alert: true }).catch(() => {});
+    await ctx.editMessageReplyMarkup({ reply_markup: undefined as any }).catch(() => {});
+    return;
+  }
+  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.deleteMessage().catch(() => {});
+
+  await sendResource(ctx, botId, {
+    type: resource.type,
+    caption: resource.caption,
+    mediaFiles: resource.mediaFiles,
+  });
+  await sendVisibilityKeyboard(ctx, resource);
 }
