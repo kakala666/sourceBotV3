@@ -11,6 +11,7 @@ import statsRouter from './stats';
 import settingsRouter from './settings';
 import adminsRouter from './admins';
 import subscriptionGateRouter from './subscription-gate';
+import botSubscriptionGateRouter from './bot-subscription-gate';
 
 const router: IRouter = Router();
 
@@ -18,6 +19,7 @@ router.use('/auth', authRouter);
 router.use('/bots', botsRouter);
 router.use('/bots', linksRouter);
 router.use('/links', subscriptionGateRouter);
+router.use('/bots', botSubscriptionGateRouter);
 router.use('/resources', resourcesRouter);
 router.use('/resource-groups', resourceGroupsRouter);
 router.use('/links', contentsRouter);
