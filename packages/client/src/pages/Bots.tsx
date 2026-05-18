@@ -3,11 +3,12 @@ import {
   Table, Button, Modal, Form, Input, Switch, Space, message, Popconfirm, Typography,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import type { BotInfo, BotCreateInput, ApiResponse } from 'shared';
 import api from '@/services/api';
+import SubscriptionGateDrawer from '@/components/SubscriptionGateDrawer';
 
 const { Title } = Typography;
 
@@ -18,6 +19,8 @@ export default function Bots() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingBot, setEditingBot] = useState<BotInfo | null>(null);
+  const [botGateDrawerOpen, setBotGateDrawerOpen] = useState(false);
+  const [botGateTarget, setBotGateTarget] = useState<{ id: number; name: string } | null>(null);
   const [form] = Form.useForm<BotCreateInput>();
   const navigate = useNavigate();
 
@@ -126,6 +129,16 @@ export default function Bots() {
       key: 'actions',
       render: (_: unknown, record: BotInfo) => (
         <Space>
+          <Button
+            size="small"
+            type="text"
+            icon={<LockOutlined />}
+            title="全局订阅配置"
+            onClick={() => {
+              setBotGateTarget({ id: record.id, name: record.name });
+              setBotGateDrawerOpen(true);
+            }}
+          />
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
             编辑
           </Button>
@@ -174,6 +187,13 @@ export default function Bots() {
           </Form.Item>
         </Form>
       </Modal>
+      <SubscriptionGateDrawer
+        level="bot"
+        targetId={botGateTarget?.id ?? null}
+        targetName={botGateTarget?.name ?? ''}
+        open={botGateDrawerOpen}
+        onClose={() => setBotGateDrawerOpen(false)}
+      />
     </>
   );
 }
