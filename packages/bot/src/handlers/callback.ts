@@ -363,8 +363,12 @@ async function processNextPage(
       return;
     }
     await completeSession(sessionId);
-    const endContent = await getEndContent();
-    await sendEndContent(ctx, endContent);
+    if (session.mode === 'favorite') {
+      await ctx.reply('你的收藏全部看完了 🎯');
+    } else {
+      const endContent = await getEndContent();
+      await sendEndContent(ctx, endContent);
+    }
   } else {
     // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
