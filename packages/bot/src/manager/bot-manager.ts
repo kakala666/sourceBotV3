@@ -4,6 +4,7 @@ import { handleStart } from '../handlers/start';
 import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
+import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
 import { reloadAllGateConfigs } from '../services/subscription-check';
 import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
@@ -187,6 +188,20 @@ export class BotManager {
       handleCallback(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] callback 处理失败:`, err.message);
         ctx.answerCallbackQuery().catch(() => {});
+      });
+    });
+
+    // 常驻键盘按钮:🎲 随便看看
+    bot.hears('🎲 随便看看', (ctx) => {
+      handleRandomBrowse(ctx, botId).catch((err: any) => {
+        console.error(`[Bot ${botId}] random 处理失败:`, err.message);
+      });
+    });
+
+    // 常驻键盘按钮:⭐ 我的收藏
+    bot.hears('⭐ 我的收藏', (ctx) => {
+      handleFavoriteBrowse(ctx, botId).catch((err: any) => {
+        console.error(`[Bot ${botId}] favorite 处理失败:`, err.message);
       });
     });
 
