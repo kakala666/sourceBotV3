@@ -16,4 +16,5 @@ export interface SystemSettings {
   centralAuthEnabled: boolean;
   verifyCodeEnabled: boolean;
   searchMoreUrl: string;
+  welcomeText: string;
 }
