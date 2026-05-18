@@ -372,8 +372,10 @@ async function processReveal(
   });
   if (!session) return;
 
-  const contentBindings = await loadContentBindings(session.botUser.inviteLinkId);
-  const binding = contentBindings[currentIndex];
+  const sequence = await loadSequenceForSession({
+    id: session.id, mode: session.mode, payload: session.payload, botUser: session.botUser,
+  });
+  const binding = sequence[currentIndex];
   if (!binding?.resource) return;
 
   const hiddenMediaFiles = binding.resource.mediaFiles.filter((mf: any) => mf.isHidden);
@@ -413,7 +415,7 @@ async function processReveal(
   }
 
   // 在底部重新发一条 keyboard 锚定消息,keyboard 去掉「🔽 展开更多」(已展开过)
-  const totalContent = contentBindings.length;
+  const totalContent = sequence.length;
   const isLast = currentIndex >= totalContent - 1;
   const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
