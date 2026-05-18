@@ -22,6 +22,21 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+router.get('/:id/actions', authMiddleware, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    if (Number.isNaN(id)) return fail(res, 'id 必须是数字', 400);
+    const { page, pageSize } = req.query;
+    const result = await UserService.listActions(id, {
+      page: page ? parseInt(page as string) : undefined,
+      pageSize: pageSize ? parseInt(pageSize as string) : undefined,
+    });
+    return success(res, result);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
 router.get('/lookup', async (req, res) => {
   try {
     const { telegramId, botId } = req.query;

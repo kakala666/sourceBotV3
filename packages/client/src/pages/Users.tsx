@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
-  Table, Input, Select, Space, message, Typography,
+  Table, Input, Select, Space, message, Typography, Button, Drawer, Tag,
 } from 'antd';
+import { HistoryOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type {
-  BotUserInfo, BotInfo, InviteLinkInfo,
+  BotUserInfo, BotInfo, InviteLinkInfo, BotUserActionItem,
   ApiResponse, PaginatedResponse,
 } from 'shared';
 import api from '@/services/api';
@@ -22,6 +23,13 @@ export default function Users() {
   const [links, setLinks] = useState<InviteLinkInfo[]>([]);
   const [selectedBotId, setSelectedBotId] = useState<number | undefined>();
   const [selectedLinkId, setSelectedLinkId] = useState<number | undefined>();
+
+  const [actionDrawerOpen, setActionDrawerOpen] = useState(false);
+  const [actionTarget, setActionTarget] = useState<BotUserInfo | null>(null);
+  const [actions, setActions] = useState<BotUserActionItem[]>([]);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [actionPage, setActionPage] = useState(1);
+  const [actionTotal, setActionTotal] = useState(0);
 
   const fetchBots = useCallback(async () => {
     try {
@@ -73,6 +81,31 @@ export default function Users() {
     setPage(1);
   };
 
+  const fetchActions = useCallback(async (userId: number, p: number) => {
+    setActionLoading(true);
+    try {
+      const { data } = await api.get<ApiResponse<PaginatedResponse<BotUserActionItem>>>(
+        `/users/${userId}/actions`,
+        { params: { page: p, pageSize: 20 } },
+      );
+      setActions(data.data?.items || []);
+      setActionTotal(data.data?.total || 0);
+    } catch {
+      message.error('获取操作记录失败');
+    } finally {
+      setActionLoading(false);
+    }
+  }, []);
+
+  const openActions = (user: BotUserInfo) => {
+    setActionTarget(user);
+    setActionPage(1);
+    setActions([]);
+    setActionTotal(0);
+    setActionDrawerOpen(true);
+    fetchActions(user.id, 1);
+  };
+
   const columns = [
     { title: 'Telegram ID', dataIndex: 'telegramId', key: 'telegramId' },
     {
@@ -111,6 +144,32 @@ export default function Users() {
       key: 'lastSeenAt',
       render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm'),
     },
+    {
+      title: '操作',
+      key: 'actions',
+      render: (_: unknown, r: BotUserInfo) => (
+        <Button size="small" icon={<HistoryOutlined />} onClick={() => openActions(r)}>
+          最近操作
+        </Button>
+      ),
+    },
+  ];
+
+  const actionColumns = [
+    {
+      title: '时间',
+      dataIndex: 'clickedAt',
+      key: 'clickedAt',
+      render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm:ss'),
+    },
+    {
+      title: '类型',
+      dataIndex: 'buttonType',
+      key: 'buttonType',
+      render: (v: 'next' | 'reveal') =>
+        v === 'next' ? <Tag color="blue">翻页</Tag> : <Tag color="green">展开</Tag>,
+    },
+    { title: '来源链接', dataIndex: 'linkName', key: 'linkName' },
   ];
 
   return (
@@ -154,6 +213,31 @@ export default function Users() {
           showTotal: (t) => `共 ${t} 条`,
         }}
       />
+      <Drawer
+        title={`最近操作${actionTarget ? ` - ${actionTarget.username ? '@' + actionTarget.username : actionTarget.firstName || actionTarget.telegramId}` : ''}`}
+        open={actionDrawerOpen}
+        onClose={() => setActionDrawerOpen(false)}
+        width={640}
+      >
+        <Table
+          rowKey="id"
+          size="small"
+          columns={actionColumns}
+          dataSource={actions}
+          loading={actionLoading}
+          pagination={{
+            current: actionPage,
+            total: actionTotal,
+            pageSize: 20,
+            onChange: (p) => {
+              setActionPage(p);
+              if (actionTarget) fetchActions(actionTarget.id, p);
+            },
+            showTotal: (t) => `共 ${t} 条`,
+          }}
+          locale={{ emptyText: '该用户暂无翻页 / 展开记录' }}
+        />
+      </Drawer>
     </>
   );
 }

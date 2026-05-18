@@ -84,3 +84,10 @@ export interface LatencyItem {
   latencyMs: number;
   clickedAt: string;
 }
+
+export interface BotUserActionItem {
+  id: number;
+  buttonType: ButtonType;
+  linkName: string;
+  clickedAt: string;
+}
