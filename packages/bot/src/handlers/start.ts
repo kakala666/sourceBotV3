@@ -1,8 +1,8 @@
 import type { Context } from 'grammy';
 import prisma from '../prisma';
 import { upsertBotUser, resetSession } from '../services/session';
-import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl } from '../services/content';
-import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
+import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl, getWelcomeText } from '../services/content';
+import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard, buildHomeReplyKeyboard } from '../services/sender';
 
 /**
  * 处理 /start 命令
@@ -45,6 +45,14 @@ export async function handleStart(ctx: Context, botId: number) {
 
   // 创建新会话（重置旧会话）
   const session = await resetSession(botUser.id);
+
+  // 发欢迎文本 + reply keyboard(Telegram 客户端会持续显示)
+  try {
+    const welcomeText = await getWelcomeText();
+    await ctx.reply(welcomeText, { reply_markup: buildHomeReplyKeyboard() });
+  } catch (err: any) {
+    console.error('[start] 发欢迎键盘失败:', err.message);
+  }
 
   // 发送第一条资源
   await sendFirstResource(ctx, botId, inviteLink.id, session.id, contentBindings);
