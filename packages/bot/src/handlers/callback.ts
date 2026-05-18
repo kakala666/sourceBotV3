@@ -6,6 +6,7 @@ import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKe
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave } from '../services/channel-collector';
+import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -42,6 +43,30 @@ export async function handleCallback(ctx: Context, botId: number) {
     } catch (err: any) {
       console.error('[callback] check_sub 处理失败:', err.message);
       await ctx.answerCallbackQuery({ text: '验证失败,请重试', show_alert: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // check_random:订阅校验后重新跑「随便看看」
+  const checkRandomMatch = data.match(/^check_random:\d+:\d+$/);
+  if (checkRandomMatch) {
+    try {
+      await ctx.answerCallbackQuery();
+      await handleRandomBrowse(ctx, botId);
+    } catch (err: any) {
+      console.error('[callback] check_random 处理失败:', err.message);
+    }
+    return;
+  }
+
+  // check_favorite:订阅校验后重新跑「我的收藏」
+  const checkFavMatch = data.match(/^check_favorite:\d+:\d+$/);
+  if (checkFavMatch) {
+    try {
+      await ctx.answerCallbackQuery();
+      await handleFavoriteBrowse(ctx, botId);
+    } catch (err: any) {
+      console.error('[callback] check_favorite 处理失败:', err.message);
     }
     return;
   }
