@@ -394,19 +394,38 @@ async function processReveal(
     console.error('[callback] reveal 发送失败:', err.message);
   }
 
-  // 从原消息键盘里移除「展开更多」按钮,保留其他(下一页等)
+  // 删除原带 keyboard 的"👆 以上是当前资源"文本消息(只有 media_group 才有 reveal,所以这条
+  // 一定是独立文本,不会连带丢失媒体内容)。失败时降级为清空按钮,保证体验不退化。
   try {
-    const origMarkup = ctx.callbackQuery?.message?.reply_markup;
-    if (origMarkup?.inline_keyboard) {
-      const filtered = origMarkup.inline_keyboard
-        .map((row) => row.filter((btn: any) => !(typeof btn.callback_data === 'string' && btn.callback_data.startsWith('reveal:'))))
-        .filter((row) => row.length > 0);
-      await ctx.editMessageReplyMarkup({
-        reply_markup: { inline_keyboard: filtered } as any,
-      });
+    await ctx.deleteMessage();
+  } catch {
+    try {
+      await ctx.editMessageReplyMarkup();
+    } catch {
+      // 双重失败不影响主流程
     }
-  } catch (err: any) {
-    // 编辑失败不影响主流程(可能是消息已删除/超时等)
+  }
+
+  // 在底部重新发一条 keyboard 锚定消息,keyboard 去掉「🔽 展开更多」(已展开过)
+  const totalContent = contentBindings.length;
+  const isLast = currentIndex >= totalContent - 1;
+  const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
+  const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+
+  let newKeyboard;
+  if (isLast) {
+    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo);
+  } else {
+    const searchMoreUrl = await getSearchMoreUrl();
+    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo);
+  }
+
+  if (newKeyboard) {
+    try {
+      await ctx.reply('👆 以上是当前资源', { reply_markup: newKeyboard });
+    } catch (err: any) {
+      console.error('[callback] reveal 后重发 keyboard 失败:', err.message);
+    }
   }
 }
 
