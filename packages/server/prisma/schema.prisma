@@ -186,6 +186,8 @@ model UserSession {
   isCompleted  Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  mode         String   @default("link")
+  payload      Json?
 
   botUser BotUser @relation(fields: [botUserId], references: [id], onDelete: Cascade)
 }
