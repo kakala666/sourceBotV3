@@ -1,4 +1,4 @@
-import { InputFile, InputMediaBuilder, InlineKeyboard } from 'grammy';
+import { InputFile, InputMediaBuilder, InlineKeyboard, Keyboard } from 'grammy';
 import type { Context } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
@@ -424,6 +424,16 @@ export async function sendEndContent(
     }
   }
   await ctx.reply(endContent.text, keyboard ? { reply_markup: keyboard } : undefined);
+}
+
+/**
+ * 常驻底部 reply keyboard:🎲 随便看看 / ⭐ 我的收藏
+ * 一旦发出,Telegram 客户端持续显示直到 ReplyKeyboardRemove。
+ */
+export function buildHomeReplyKeyboard(): Keyboard {
+  return new Keyboard()
+    .text('🎲 随便看看').text('⭐ 我的收藏')
+    .resized().persistent();
 }
 
 export { buildPageKeyboard, buildContentKeyboard };
