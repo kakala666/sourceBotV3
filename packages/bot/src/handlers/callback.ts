@@ -376,6 +376,11 @@ async function processNextPage(
   const hasHidden = visibleMediaFiles.length < allMediaFiles.length;
   const filteredResource = { ...binding.resource, mediaFiles: visibleMediaFiles };
   const revealInfo = hasHidden ? { sessionId, currentIndex: nextIndex } : null;
+  const mediaCounts = {
+    total: allMediaFiles.length,
+    visible: visibleMediaFiles.length,
+    hidden: allMediaFiles.length - visibleMediaFiles.length,
+  };
 
   const isLast = nextIndex >= totalContent - 1;
 
@@ -386,7 +391,7 @@ async function processNextPage(
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
     const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo);
     try {
-      await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
+      await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
       await ctx.reply('⚠️ 资源加载失败，请稍后重试');
@@ -405,7 +410,7 @@ async function processNextPage(
     const searchMoreUrl = await getSearchMoreUrl();
     const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo);
     try {
-      await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id);
+      await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
       console.error('[callback] 发送资源失败:', err.message);
       const fallbackKb = buildPageKeyboard(sessionId, nextIndex + 1, searchMoreUrl);
@@ -489,7 +494,10 @@ async function processReveal(
 
   if (newKeyboard) {
     try {
-      await ctx.reply('👆 以上是当前资源', { reply_markup: newKeyboard });
+      await ctx.reply(
+        '👆👆所有资源已经发送完毕👆\n喜欢的此类资源 可以点击下方收藏按钮进行收藏\n后续这个妹子有新的影片更新 将会通知你\n后续同类型资源上架会自动进行推送',
+        { reply_markup: newKeyboard },
+      );
     } catch (err: any) {
       console.error('[callback] reveal 后重发 keyboard 失败:', err.message);
     }

@@ -329,6 +329,7 @@ function buildContentKeyboard(
 /**
  * 发送资源（根据类型自动选择发送方式）
  * 传入 resourceId 时,在 caption 开头加「资源{id}」前缀(占一行)。
+ * mediaCounts:仅 media_group 锦文本用,有隐藏项时切到引导展开的文案。
  */
 export async function sendResource(
   ctx: Context,
@@ -340,6 +341,7 @@ export async function sendResource(
   },
   keyboard?: InlineKeyboard,
   resourceId?: number,
+  mediaCounts?: { total: number; visible: number; hidden: number },
 ) {
   const { type, mediaFiles } = resource;
   const caption = resourceId !== undefined
@@ -356,7 +358,10 @@ export async function sendResource(
     await sendMediaGroup(ctx, botId, mediaFiles, caption);
     // media_group 不支持 inline keyboard，单独发送键盘
     if (keyboard) {
-      await ctx.reply('👆 以上是当前资源', { reply_markup: keyboard });
+      const anchorText = mediaCounts && mediaCounts.hidden > 0
+        ? `✅ 第1组已经发送\n（此资源共${mediaCounts.total}文件 已发${mediaCounts.visible} 还剩${mediaCounts.hidden}文件 未发送）\n👇点击下方 展开更多 按钮 查看全部资源文件👇`
+        : '👆 以上是当前资源';
+      await ctx.reply(anchorText, { reply_markup: keyboard });
     }
     return;
   }

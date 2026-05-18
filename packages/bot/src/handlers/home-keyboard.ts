@@ -46,10 +46,15 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
   const filteredResource = { ...resource, mediaFiles: visibleMediaFiles };
   const revealInfo = hasHidden ? { sessionId: session.id, currentIndex: 0 } : null;
   const favoriteInfo = { sessionId: session.id, resourceId: resource.id };
+  const mediaCounts = {
+    total: allMediaFiles.length,
+    visible: visibleMediaFiles.length,
+    hidden: allMediaFiles.length - visibleMediaFiles.length,
+  };
 
   const keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo);
   try {
-    await sendResource(ctx, botId, filteredResource as any, keyboard, resource.id);
+    await sendResource(ctx, botId, filteredResource as any, keyboard, resource.id, mediaCounts);
   } catch (err: any) {
     console.error('[home] random 发送失败:', err.message);
     await ctx.reply('⚠️ 资源加载失败,请稍后重试');
@@ -95,6 +100,11 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   const filteredResource = { ...first.resource, mediaFiles: visibleMediaFiles };
   const revealInfo = hasHidden ? { sessionId: session.id, currentIndex: 0 } : null;
   const favoriteInfo = { sessionId: session.id, resourceId: first.resource.id };
+  const mediaCounts = {
+    total: allMediaFiles.length,
+    visible: visibleMediaFiles.length,
+    hidden: allMediaFiles.length - visibleMediaFiles.length,
+  };
 
   let keyboard;
   if (favorites.length > 1) {
@@ -105,7 +115,7 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   }
 
   try {
-    await sendResource(ctx, botId, filteredResource as any, keyboard, first.resource.id);
+    await sendResource(ctx, botId, filteredResource as any, keyboard, first.resource.id, mediaCounts);
   } catch (err: any) {
     console.error('[home] favorite 发送失败:', err.message);
     await ctx.reply('⚠️ 资源加载失败,请稍后重试');
