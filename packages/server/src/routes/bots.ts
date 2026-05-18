@@ -31,6 +31,22 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.post('/clone', async (req, res) => {
+  try {
+    const { token, name, sourceBotId } = req.body ?? {};
+    if (!token || !name || !sourceBotId) {
+      return fail(res, 'token、name 和 sourceBotId 不能为空', 400);
+    }
+    const result = await BotService.cloneBot(token, name, Number(sourceBotId));
+    return success(res, result, 201);
+  } catch (err: any) {
+    if (err.code === 'P2002') {
+      return fail(res, '该 Token 已被使用', 409);
+    }
+    return fail(res, err.message, 500);
+  }
+});
+
 router.put('/:id', async (req, res) => {
   try {
     const id = parseInt(req.params.id);
