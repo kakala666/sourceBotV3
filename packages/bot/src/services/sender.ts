@@ -2,6 +2,7 @@ import { InputFile, InputMediaBuilder, InlineKeyboard, Keyboard } from 'grammy';
 import type { Context } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
+import { isS3Path, parseS3Key, downloadToTmp, cleanupTmp } from './storage';
 
 /** 上传文件的根目录，优先使用环境变量，否则从 cwd 推断 */
 const UPLOADS_ROOT = process.env.UPLOAD_DIR
@@ -9,19 +10,26 @@ const UPLOADS_ROOT = process.env.UPLOAD_DIR
   : path.resolve(process.cwd(), 'uploads');
 
 /**
+ * 把 DB filePath(可能是 's3:xxx' 也可能是本地文件名)解析成本地绝对路径,
+ * 返回 cleanup 函数(发完后调一次)。本地路径 cleanup 是 no-op。
+ */
+async function resolveLocalPath(filePath: string): Promise<{ absPath: string; cleanup: () => void }> {
+  if (!isS3Path(filePath)) {
+    return {
+      absPath: path.isAbsolute(filePath) ? filePath : path.resolve(UPLOADS_ROOT, filePath),
+      cleanup: () => {},
+    };
+  }
+  const tmpPath = await downloadToTmp(parseS3Key(filePath));
+  return { absPath: tmpPath, cleanup: () => { cleanupTmp(tmpPath); } };
+}
+
+/**
  * 判断是否为 file_id 失效错误（而非 URL/键盘等其他错误）
  */
 function isFileIdError(err: any): boolean {
   const msg = String(err?.message || '').toLowerCase();
   return msg.includes('wrong file identifier') || msg.includes('file_id') || msg.includes('invalid file');
-}
-
-/**
- * 获取文件的绝对路径
- */
-function getAbsoluteFilePath(filePath: string): string {
-  if (path.isAbsolute(filePath)) return filePath;
-  return path.resolve(UPLOADS_ROOT, filePath);
 }
 
 /**
@@ -96,12 +104,16 @@ async function sendPhoto(
     }
   }
 
-  // 从本地文件上传
-  const absPath = getAbsoluteFilePath(mediaFile.filePath);
-  const msg = await ctx.replyWithPhoto(new InputFile(absPath), opts);
-  const fileId = extractFileId(msg, 'photo');
-  if (fileId) await saveCachedFileId(botId, mediaFile.id, fileId);
-  return msg;
+  // 从本地文件上传(S3 路径会先下到 /tmp)
+  const { absPath, cleanup } = await resolveLocalPath(mediaFile.filePath);
+  try {
+    const msg = await ctx.replyWithPhoto(new InputFile(absPath), opts);
+    const fileId = extractFileId(msg, 'photo');
+    if (fileId) await saveCachedFileId(botId, mediaFile.id, fileId);
+    return msg;
+  } finally {
+    cleanup();
+  }
 }
 
 /**
@@ -121,8 +133,11 @@ async function sendVideo(
   if (mediaFile.duration) opts.duration = mediaFile.duration;
   if (mediaFile.width) opts.width = mediaFile.width;
   if (mediaFile.height) opts.height = mediaFile.height;
+  let thumbCleanup: (() => void) | null = null;
   if (mediaFile.thumbnailPath) {
-    opts.thumbnail = new InputFile(getAbsoluteFilePath(mediaFile.thumbnailPath));
+    const t = await resolveLocalPath(mediaFile.thumbnailPath);
+    opts.thumbnail = new InputFile(t.absPath);
+    thumbCleanup = t.cleanup;
   }
 
   if (cachedId) {
@@ -132,14 +147,28 @@ async function sendVideo(
       if (!isFileIdError(err)) throw err;
       console.error(`[sender] file_id 失效，重新上传: mediaFile=${mediaFile.id}`, err.message);
       await deleteCachedFileId(botId, mediaFile.id);
+    } finally {
+      // 缩略图只在 cachedId 路径下用了一次,这里清理一次;后续走本地上传会重新 resolve
+      if (cachedId && thumbCleanup) { thumbCleanup(); thumbCleanup = null; }
     }
   }
 
-  const absPath = getAbsoluteFilePath(mediaFile.filePath);
-  const msg = await ctx.replyWithVideo(new InputFile(absPath), opts);
-  const fileId = extractFileId(msg, 'video');
-  if (fileId) await saveCachedFileId(botId, mediaFile.id, fileId);
-  return msg;
+  // cachedId 失败回退或首次上传:重新 resolve 缩略图(上一次可能已 cleanup)
+  if (mediaFile.thumbnailPath && !thumbCleanup) {
+    const t = await resolveLocalPath(mediaFile.thumbnailPath);
+    opts.thumbnail = new InputFile(t.absPath);
+    thumbCleanup = t.cleanup;
+  }
+  const { absPath, cleanup } = await resolveLocalPath(mediaFile.filePath);
+  try {
+    const msg = await ctx.replyWithVideo(new InputFile(absPath), opts);
+    const fileId = extractFileId(msg, 'video');
+    if (fileId) await saveCachedFileId(botId, mediaFile.id, fileId);
+    return msg;
+  } finally {
+    cleanup();
+    if (thumbCleanup) thumbCleanup();
+  }
 }
 
 /** Telegram sendMediaGroup 单批上限,超过自动分批发送 */
@@ -178,18 +207,19 @@ async function sendMediaGroup(
   }
 }
 
-/** 构建单条 video 的 InputMediaVideo 选项,带流媒体优化与缩略图 */
+/** 构建单条 video 的 InputMediaVideo 选项,带流媒体优化与缩略图(thumbAbsPath 由调用方预先 resolve) */
 function buildVideoOpts(
   mf: MediaFileLike,
   itemCaption: string | undefined,
+  thumbAbsPath: string | null,
 ): any {
   const opts: any = { supports_streaming: true };
   if (itemCaption !== undefined) opts.caption = itemCaption;
   if (mf.duration) opts.duration = mf.duration;
   if (mf.width) opts.width = mf.width;
   if (mf.height) opts.height = mf.height;
-  if (mf.thumbnailPath) {
-    opts.thumbnail = new InputFile(getAbsoluteFilePath(mf.thumbnailPath));
+  if (thumbAbsPath) {
+    opts.thumbnail = new InputFile(thumbAbsPath);
   }
   return opts;
 }
@@ -201,60 +231,76 @@ async function sendMediaGroupBatch(
   mediaFiles: MediaFileLike[],
   caption?: string | null,
 ) {
-  const mediaItems: any[] = [];
-  const uploadedFromLocal = new Set<number>();
-
-  for (let i = 0; i < mediaFiles.length; i++) {
-    const mf = mediaFiles[i];
-    const cachedId = await getCachedFileId(botId, mf.id);
-    const itemCaption = i === 0 ? (caption ?? undefined) : undefined;
-
-    let source: string | InputFile;
-    if (cachedId) {
-      source = cachedId;
-    } else {
-      source = new InputFile(getAbsoluteFilePath(mf.filePath));
-      uploadedFromLocal.add(i);
-    }
-
-    if (mf.type === 'video') {
-      mediaItems.push(InputMediaBuilder.video(source, buildVideoOpts(mf, itemCaption)));
-    } else {
-      mediaItems.push(InputMediaBuilder.photo(source, { caption: itemCaption }));
-    }
-  }
+  // 一次性 resolve 全部 mediaFile.filePath + thumbnailPath,发完统一 cleanup
+  const resolvedMain = await Promise.all(mediaFiles.map((mf) => resolveLocalPath(mf.filePath)));
+  const resolvedThumb = await Promise.all(
+    mediaFiles.map((mf) => (mf.thumbnailPath ? resolveLocalPath(mf.thumbnailPath) : Promise.resolve(null))),
+  );
+  const cleanupAll = () => {
+    for (const r of resolvedMain) r.cleanup();
+    for (const r of resolvedThumb) if (r) r.cleanup();
+  };
 
   try {
-    const messages = await ctx.replyWithMediaGroup(mediaItems);
-    for (const i of uploadedFromLocal) {
-      const mf = mediaFiles[i];
-      if (!mf) continue;
-      const fid = extractFileId(messages[i], mf.type);
-      if (fid) await saveCachedFileId(botId, mf.id, fid);
-    }
-    return messages;
-  } catch (err: any) {
-    if (!isFileIdError(err)) throw err;
+    const mediaItems: any[] = [];
+    const uploadedFromLocal = new Set<number>();
 
-    console.error('[sender] 媒体组 file_id 失效，清除缓存重试', err.message);
-    for (const mf of mediaFiles) {
-      await deleteCachedFileId(botId, mf.id);
-    }
-    const retryItems = mediaFiles.map((mf, i) => {
-      const src = new InputFile(getAbsoluteFilePath(mf.filePath));
-      const cap = i === 0 ? (caption ?? undefined) : undefined;
-      return mf.type === 'video'
-        ? InputMediaBuilder.video(src, buildVideoOpts(mf, cap))
-        : InputMediaBuilder.photo(src, { caption: cap });
-    });
-    const messages = await ctx.replyWithMediaGroup(retryItems);
-    for (let i = 0; i < messages.length; i++) {
+    for (let i = 0; i < mediaFiles.length; i++) {
       const mf = mediaFiles[i];
-      if (!mf) continue;
-      const fid = extractFileId(messages[i], mf.type);
-      if (fid) await saveCachedFileId(botId, mf.id, fid);
+      const cachedId = await getCachedFileId(botId, mf.id);
+      const itemCaption = i === 0 ? (caption ?? undefined) : undefined;
+      const thumbAbs = resolvedThumb[i]?.absPath ?? null;
+
+      let source: string | InputFile;
+      if (cachedId) {
+        source = cachedId;
+      } else {
+        source = new InputFile(resolvedMain[i].absPath);
+        uploadedFromLocal.add(i);
+      }
+
+      if (mf.type === 'video') {
+        mediaItems.push(InputMediaBuilder.video(source, buildVideoOpts(mf, itemCaption, thumbAbs)));
+      } else {
+        mediaItems.push(InputMediaBuilder.photo(source, { caption: itemCaption }));
+      }
     }
-    return messages;
+
+    try {
+      const messages = await ctx.replyWithMediaGroup(mediaItems);
+      for (const i of uploadedFromLocal) {
+        const mf = mediaFiles[i];
+        if (!mf) continue;
+        const fid = extractFileId(messages[i], mf.type);
+        if (fid) await saveCachedFileId(botId, mf.id, fid);
+      }
+      return messages;
+    } catch (err: any) {
+      if (!isFileIdError(err)) throw err;
+
+      console.error('[sender] 媒体组 file_id 失效，清除缓存重试', err.message);
+      for (const mf of mediaFiles) {
+        await deleteCachedFileId(botId, mf.id);
+      }
+      const retryItems = mediaFiles.map((mf, i) => {
+        const src = new InputFile(resolvedMain[i].absPath);
+        const cap = i === 0 ? (caption ?? undefined) : undefined;
+        const thumbAbs = resolvedThumb[i]?.absPath ?? null;
+        return mf.type === 'video'
+          ? InputMediaBuilder.video(src, buildVideoOpts(mf, cap, thumbAbs))
+          : InputMediaBuilder.photo(src, { caption: cap });
+      });
+      const messages = await ctx.replyWithMediaGroup(retryItems);
+      for (let i = 0; i < messages.length; i++) {
+        const mf = mediaFiles[i];
+        if (!mf) continue;
+        const fid = extractFileId(messages[i], mf.type);
+        if (fid) await saveCachedFileId(botId, mf.id, fid);
+      }
+      return messages;
+    }
+  } finally {
+    cleanupAll();
   }
 }
 

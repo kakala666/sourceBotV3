@@ -1,10 +1,12 @@
 import type { Context } from 'grammy';
 import { InlineKeyboard } from 'grammy';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import prisma from '../prisma';
 import { sendResource } from './sender';
 import { getVideoMeta, generateThumbnail } from '../utils/video';
+import { uploadLocalFile, makeS3Path } from './storage';
 
 /** 激活指令(精确匹配,trim 后) */
 export const ACTIVATION_COMMAND = 'kakaco';
@@ -60,12 +62,16 @@ if (!fs.existsSync(UPLOADS_ROOT)) {
   fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
 }
 
+/** S3 上媒体对象的统一 key 前缀 */
+const S3_MEDIA_PREFIX = 'media/';
+
 type DownloadedFile = {
   type: 'photo' | 'video';
-  fileName: string;          // 落到 uploads 后的文件名
+  fileName: string;          // DB filePath 落库值,已带 's3:' 前缀,形如 's3:media/<random>.mp4'
   originalFileName: string;  // 原始名(展示用)
   mimeType: string;
   fileSize: number;
+  tmpPath: string;           // 本地 tmp 副本路径(留给 ffmpeg 处理视频元数据;photo 直接清)
 };
 
 type MediaGroupBufferEntry = {
@@ -212,7 +218,11 @@ async function downloadCurrentMedia(ctx: Context, botId: number): Promise<Downlo
 
   const ext = path.extname(originalFileName) || (type === 'video' ? '.mp4' : '.jpg');
   const destFileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-  const destPath = path.join(UPLOADS_ROOT, destFileName);
+  const s3Key = `${S3_MEDIA_PREFIX}${destFileName}`;
+
+  // 落到 tmp 目录(给 ffmpeg 用,photo 上传完立即由调用方清理)
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'sb-ingest-'));
+  const tmpPath = path.join(tmpDir, destFileName);
 
   const fileInfo = await ctx.getFile();
   const filePath = fileInfo.file_path;
@@ -222,7 +232,7 @@ async function downloadCurrentMedia(ctx: Context, botId: number): Promise<Downlo
 
   if (path.isAbsolute(filePath)) {
     // local-mode telegram-bot-api:file_path 是本地绝对路径,直接复制
-    await fs.promises.copyFile(filePath, destPath);
+    await fs.promises.copyFile(filePath, tmpPath);
   } else {
     // standard 模式或 local API 但非 local-mode:走 HTTP 下载
     const token = await getBotToken(botId);
@@ -231,14 +241,24 @@ async function downloadCurrentMedia(ctx: Context, botId: number): Promise<Downlo
     const res = await fetch(url);
     if (!res.ok) throw new Error(`下载文件失败:HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    await fs.promises.writeFile(destPath, buf);
+    await fs.promises.writeFile(tmpPath, buf);
   }
 
   if (!fileSize) {
-    try { fileSize = fs.statSync(destPath).size; } catch { /* ignore */ }
+    try { fileSize = fs.statSync(tmpPath).size; } catch { /* ignore */ }
   }
 
-  return { type, fileName: destFileName, originalFileName, mimeType, fileSize };
+  // 上传到 S3 (Wasabi)
+  await uploadLocalFile(tmpPath, s3Key, mimeType);
+
+  return {
+    type,
+    fileName: makeS3Path(s3Key),  // 's3:media/<destFileName>'
+    originalFileName,
+    mimeType,
+    fileSize,
+    tmpPath,
+  };
 }
 
 async function downloadCurrentMediaThrottled(ctx: Context, botId: number): Promise<DownloadedFile | null> {
@@ -276,8 +296,8 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
     include: { mediaFiles: true },
   });
 
-  // 异步提取视频元数据 + 缩略图(不阻塞反馈消息)
-  processVideoFilesAsync(resource.mediaFiles);
+  // 异步提取视频元数据 + 缩略图(对视频),其他类型仅清 tmp
+  processIngestedFilesAsync(resource.mediaFiles, [file.tmpPath]);
 
   await sendAssignmentPrompt(ctx, resource, groupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
@@ -340,41 +360,67 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
     include: { mediaFiles: true },
   });
 
-  processVideoFilesAsync(resource.mediaFiles);
+  // 元数据/缩略图(视频)+ 清 tmp
+  processIngestedFilesAsync(
+    resource.mediaFiles,
+    entry.items.map((it) => it.file.tmpPath),
+  );
 
   await sendAssignmentPrompt(entry.lastCtx, resource, entry.resourceGroupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
   );
 }
 
-/* ============== 异步处理视频元数据 + 缩略图 ============== */
+/* ============== 异步处理视频元数据 + 缩略图 + tmp 清理 ============== */
 
 /**
- * 对 mediaFiles 中的 video 异步提取 duration/width/height + 生成缩略图,
- * 写回 DB。fire-and-forget,失败仅日志。
+ * 对每个入库 mediaFile:
+ *   - video:ffmpeg 提元数据 + 生成缩略图 → 缩略图上传 S3 → 写回 DB → 清 tmp
+ *   - 其他类型:S3 上传已在 downloadCurrentMedia 完成,直接清 tmp
+ * fire-and-forget,失败仅日志。
  */
-function processVideoFilesAsync(mediaFiles: { id: number; type: string; filePath: string }[]) {
-  for (const mf of mediaFiles) {
-    if (mf.type !== 'video') continue;
-    processSingleVideoMeta(mf.id, mf.filePath).catch((err) => {
-      console.error(`[channel-collector] 视频 ${mf.id} 元数据提取失败:`, err.message);
-    });
+function processIngestedFilesAsync(
+  mediaFiles: { id: number; type: string; filePath: string }[],
+  tmpPaths: string[],
+) {
+  for (let i = 0; i < mediaFiles.length; i++) {
+    const mf = mediaFiles[i];
+    const tmpPath = tmpPaths[i];
+    if (!tmpPath) continue;
+    if (mf.type === 'video') {
+      processVideoTmp(mf.id, tmpPath).catch((err) => {
+        console.error(`[channel-collector] 视频 ${mf.id} 元数据/缩略图处理失败:`, err.message);
+      }).finally(() => cleanupTmpDir(tmpPath));
+    } else {
+      cleanupTmpDir(tmpPath);
+    }
   }
 }
 
-async function processSingleVideoMeta(mediaFileId: number, fileName: string) {
-  const absPath = path.join(UPLOADS_ROOT, fileName);
-  const meta = await getVideoMeta(absPath);
-  const thumbName = await generateThumbnail(absPath, UPLOADS_ROOT);
+async function processVideoTmp(mediaFileId: number, tmpPath: string) {
+  const meta = await getVideoMeta(tmpPath);
+  const tmpDir = path.dirname(tmpPath);
+  const thumbName = await generateThumbnail(tmpPath, tmpDir);
+  const thumbLocalPath = path.join(tmpDir, thumbName);
+  const thumbS3Key = `${S3_MEDIA_PREFIX}${thumbName}`;
+
+  await uploadLocalFile(thumbLocalPath, thumbS3Key, 'image/jpeg');
+
   await prisma.mediaFile.update({
     where: { id: mediaFileId },
     data: {
       duration: meta.duration,
       width: meta.width,
       height: meta.height,
-      thumbnailPath: thumbName,
+      thumbnailPath: makeS3Path(thumbS3Key),
     },
   });
+}
+
+/** 清掉 tmp 文件及其所在目录(包含 ffmpeg 可能生成的缩略图等同目录产物) */
+function cleanupTmpDir(tmpPath: string) {
+  const dir = path.dirname(tmpPath);
+  fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
 }
 
 /* ============== 反馈消息 + 归属选择键盘 ============== */
