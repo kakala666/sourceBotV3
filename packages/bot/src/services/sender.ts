@@ -10,8 +10,22 @@ const UPLOADS_ROOT = process.env.UPLOAD_DIR
   : path.resolve(process.cwd(), 'uploads');
 
 /**
+ * v2 系统迁过来的 placeholder:filePath 形如 'v2-placeholder/<file_id>.<ext>'。
+ * 这种 MediaFile 没有本地副本也没有 S3 副本,直接把 file_id 给 Telegram 用。
+ * 返回 file_id 字符串,匹配不到返回 null。
+ */
+function extractV2PlaceholderFileId(filePath: string): string | null {
+  const PREFIX = 'v2-placeholder/';
+  if (!filePath.startsWith(PREFIX)) return null;
+  const rest = filePath.slice(PREFIX.length);
+  // 去掉可能的扩展名(.mp4/.jpg/...)
+  return rest.replace(/\.[^/.]+$/, '');
+}
+
+/**
  * 把 DB filePath(可能是 's3:xxx' 也可能是本地文件名)解析成本地绝对路径,
  * 返回 cleanup 函数(发完后调一次)。本地路径 cleanup 是 no-op。
+ * v2-placeholder 路径在调用前已经被 short-circuit,这里不应该再看到。
  */
 async function resolveLocalPath(filePath: string): Promise<{ absPath: string; cleanup: () => void }> {
   if (!isS3Path(filePath)) {
@@ -104,6 +118,15 @@ async function sendPhoto(
     }
   }
 
+  // v2-placeholder:filePath 里就是 file_id,直接发,失败即抛(不要走本地/S3 IO)
+  const v2FileId = extractV2PlaceholderFileId(mediaFile.filePath);
+  if (v2FileId) {
+    const msg = await ctx.replyWithPhoto(v2FileId, opts);
+    const fid = extractFileId(msg, 'photo');
+    if (fid) await saveCachedFileId(botId, mediaFile.id, fid);
+    return msg;
+  }
+
   // 从本地文件上传(S3 路径会先下到 /tmp)
   const { absPath, cleanup } = await resolveLocalPath(mediaFile.filePath);
   try {
@@ -150,6 +173,19 @@ async function sendVideo(
     } finally {
       // 缩略图只在 cachedId 路径下用了一次,这里清理一次;后续走本地上传会重新 resolve
       if (cachedId && thumbCleanup) { thumbCleanup(); thumbCleanup = null; }
+    }
+  }
+
+  // v2-placeholder:filePath 里就是 file_id,直接发
+  const v2FileId = extractV2PlaceholderFileId(mediaFile.filePath);
+  if (v2FileId) {
+    try {
+      const msg = await ctx.replyWithVideo(v2FileId, opts);
+      const fid = extractFileId(msg, 'video');
+      if (fid) await saveCachedFileId(botId, mediaFile.id, fid);
+      return msg;
+    } finally {
+      if (thumbCleanup) thumbCleanup();
     }
   }
 
@@ -231,13 +267,17 @@ async function sendMediaGroupBatch(
   mediaFiles: MediaFileLike[],
   caption?: string | null,
 ) {
-  // 一次性 resolve 全部 mediaFile.filePath + thumbnailPath,发完统一 cleanup
-  const resolvedMain = await Promise.all(mediaFiles.map((mf) => resolveLocalPath(mf.filePath)));
+  // 预先识别每个 mediaFile 是 v2-placeholder(直发 file_id)还是本地/S3(需要 resolve)
+  const v2Ids: (string | null)[] = mediaFiles.map((mf) => extractV2PlaceholderFileId(mf.filePath));
+  // 仅对非 v2 的做 resolveLocalPath;v2 的占位 null,不占 socket
+  const resolvedMain = await Promise.all(
+    mediaFiles.map((mf, i) => (v2Ids[i] ? Promise.resolve(null) : resolveLocalPath(mf.filePath))),
+  );
   const resolvedThumb = await Promise.all(
     mediaFiles.map((mf) => (mf.thumbnailPath ? resolveLocalPath(mf.thumbnailPath) : Promise.resolve(null))),
   );
   const cleanupAll = () => {
-    for (const r of resolvedMain) r.cleanup();
+    for (const r of resolvedMain) if (r) r.cleanup();
     for (const r of resolvedThumb) if (r) r.cleanup();
   };
 
@@ -254,8 +294,12 @@ async function sendMediaGroupBatch(
       let source: string | InputFile;
       if (cachedId) {
         source = cachedId;
+      } else if (v2Ids[i]) {
+        // v2-placeholder:filePath 即 file_id,直接发
+        source = v2Ids[i] as string;
+        uploadedFromLocal.add(i);
       } else {
-        source = new InputFile(resolvedMain[i].absPath);
+        source = new InputFile(resolvedMain[i]!.absPath);
         uploadedFromLocal.add(i);
       }
 
@@ -283,7 +327,9 @@ async function sendMediaGroupBatch(
         await deleteCachedFileId(botId, mf.id);
       }
       const retryItems = mediaFiles.map((mf, i) => {
-        const src = new InputFile(resolvedMain[i].absPath);
+        const src: string | InputFile = v2Ids[i]
+          ? (v2Ids[i] as string)
+          : new InputFile(resolvedMain[i]!.absPath);
         const cap = i === 0 ? (caption ?? undefined) : undefined;
         const thumbAbs = resolvedThumb[i]?.absPath ?? null;
         return mf.type === 'video'

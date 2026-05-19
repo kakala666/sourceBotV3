@@ -1,5 +1,7 @@
 import { S3Client, GetObjectCommand, HeadObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
+import { Agent as HttpsAgent } from 'https';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -30,6 +32,10 @@ function getClient(): S3Client {
     region: REGION,
     credentials: { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY },
     forcePathStyle: false,
+    // 默认 maxSockets=50 在高并发(多人同时翻页/random)时会排队雪崩,提到 200
+    requestHandler: new NodeHttpHandler({
+      httpsAgent: new HttpsAgent({ maxSockets: 200, keepAlive: true }),
+    }),
   });
   return _s3;
 }
