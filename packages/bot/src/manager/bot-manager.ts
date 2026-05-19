@@ -5,6 +5,7 @@ import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
 import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
+import { shouldThrottle } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
 import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
@@ -193,6 +194,8 @@ export class BotManager {
 
     // 常驻键盘按钮:🎲 随便看看
     bot.hears('🎲 随便看看', (ctx) => {
+      const tgId = ctx.from?.id;
+      if (tgId && shouldThrottle(botId, tgId)) return;
       handleRandomBrowse(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] random 处理失败:`, err.message);
       });
@@ -200,6 +203,8 @@ export class BotManager {
 
     // 常驻键盘按钮:⭐ 我的收藏
     bot.hears('⭐ 我的收藏', (ctx) => {
+      const tgId = ctx.from?.id;
+      if (tgId && shouldThrottle(botId, tgId)) return;
       handleFavoriteBrowse(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] favorite 处理失败:`, err.message);
       });

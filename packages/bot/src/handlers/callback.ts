@@ -7,6 +7,10 @@ import { ensureSubscribed, getGateConfig } from '../services/subscription-check'
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
+import { shouldThrottle } from '../services/click-throttle';
+
+/** 这些 callback data 前缀对应用户业务按钮,需要 3s 节流(订阅复核 / 频道管理操作不限) */
+const THROTTLED_CB_PREFIXES = ['next:', 'reveal:', 'fav:'];
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -32,6 +36,15 @@ function recordButtonClick(params: {
 export async function handleCallback(ctx: Context, botId: number) {
   const data = ctx.callbackQuery?.data;
   if (!data) return;
+
+  // 业务按钮 3 秒节流:命中 throttle 时清 loading 静默丢弃
+  if (THROTTLED_CB_PREFIXES.some((p) => data.startsWith(p))) {
+    const tgId = ctx.from?.id;
+    if (tgId && shouldThrottle(botId, tgId)) {
+      await ctx.answerCallbackQuery().catch(() => {});
+      return;
+    }
+  }
 
   // 订阅校验回调
   const checkMatch = data.match(/^check_sub:(\d+):(\d+)$/);
