@@ -81,9 +81,13 @@ async function main() {
   const startedAt = Date.now();
   const batchSize = 50;
 
+  // 用 cursor 翻页 — 即使某条 MediaFile 因本地缺失没改 DB,lastId 也向前推进,
+  // 否则下一次 findMany 会再次命中同一批,陷入死循环。
+  let lastId = 0;
   for (;;) {
     const batch = await prisma.mediaFile.findMany({
       where: {
+        id: { gt: lastId },
         OR: [
           { NOT: { filePath: { startsWith: S3_PREFIX } } },
           { AND: [{ thumbnailPath: { not: null } }, { NOT: { thumbnailPath: { startsWith: S3_PREFIX } } }] },
@@ -96,6 +100,7 @@ async function main() {
     if (batch.length === 0) break;
 
     for (const mf of batch) {
+      lastId = mf.id;
       const updates: { filePath?: string; thumbnailPath?: string } = {};
 
       // 主文件
