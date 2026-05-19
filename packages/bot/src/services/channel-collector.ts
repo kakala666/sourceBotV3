@@ -420,7 +420,9 @@ async function processVideoTmp(mediaFileId: number, tmpPath: string) {
 /** 清掉 tmp 文件及其所在目录(包含 ffmpeg 可能生成的缩略图等同目录产物) */
 function cleanupTmpDir(tmpPath: string) {
   const dir = path.dirname(tmpPath);
-  fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
+  fs.promises.rm(dir, { recursive: true, force: true }).catch((err: any) => {
+    console.error('[channel-collector] cleanupTmpDir 失败:', dir, err?.message || err);
+  });
 }
 
 /* ============== 反馈消息 + 归属选择键盘 ============== */

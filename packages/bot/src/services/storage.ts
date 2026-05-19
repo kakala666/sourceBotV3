@@ -121,10 +121,40 @@ export async function deleteFromS3(key: string): Promise<void> {
 
 /** 删除 tmp 文件及其所在目录(downloadToTmp 配套清理) */
 export async function cleanupTmp(tmpPath: string): Promise<void> {
+  const dir = path.dirname(tmpPath);
   try {
-    await fs.promises.unlink(tmpPath);
-    await fs.promises.rmdir(path.dirname(tmpPath));
-  } catch {
-    /* ignore */
+    await fs.promises.rm(dir, { recursive: true, force: true });
+  } catch (err: any) {
+    // 失败要让调用方知道,以便排查(之前 silent catch 导致 /tmp 累积 166G)
+    console.error('[storage] cleanupTmp 失败:', dir, err?.message || err);
   }
+}
+
+/**
+ * bot 启动时调用一次:清掉 /tmp 下所有 sb-* / sb-ingest-* 孤儿目录。
+ * bot 重启意味着所有 in-flight 的下载/入库请求都已断开,这些 tmp 必然是泄漏。
+ * fire-and-forget;失败仅日志,不影响启动。
+ */
+export function cleanupOrphanedTmpsOnStartup(): void {
+  (async () => {
+    try {
+      const entries = await fs.promises.readdir(os.tmpdir(), { withFileTypes: true });
+      const targets = entries.filter(
+        (e) => e.isDirectory() && (e.name.startsWith('sb-') || e.name.startsWith('sb-ingest-')),
+      );
+      if (targets.length === 0) return;
+      let removed = 0;
+      for (const e of targets) {
+        try {
+          await fs.promises.rm(path.join(os.tmpdir(), e.name), { recursive: true, force: true });
+          removed++;
+        } catch (err: any) {
+          console.error('[storage] startup tmp 清理失败:', e.name, err?.message || err);
+        }
+      }
+      console.log(`[storage] startup 清理孤儿 tmp: ${removed} / ${targets.length}`);
+    } catch (err: any) {
+      console.error('[storage] startup tmp 扫描失败:', err?.message || err);
+    }
+  })();
 }

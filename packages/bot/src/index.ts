@@ -6,11 +6,15 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 import { BotManager } from './manager/bot-manager';
 import { startBroadcastServer } from './broadcast/server';
+import { cleanupOrphanedTmpsOnStartup } from './services/storage';
 
 const manager = new BotManager();
 
 async function main() {
   console.log('[Bot Runner] 启动...');
+
+  // bot 重启意味着所有 in-flight 的 sender 下载/入库都已断,/tmp/sb-* 必然是孤儿
+  cleanupOrphanedTmpsOnStartup();
 
   await manager.start();
 
