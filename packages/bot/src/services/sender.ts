@@ -267,14 +267,24 @@ async function sendMediaGroupBatch(
   mediaFiles: MediaFileLike[],
   caption?: string | null,
 ) {
-  // 预先识别每个 mediaFile 是 v2-placeholder(直发 file_id)还是本地/S3(需要 resolve)
+  // 1) 预查 file_id 缓存 + v2 占位:这两类都不需要本地副本,跳过 S3 download
   const v2Ids: (string | null)[] = mediaFiles.map((mf) => extractV2PlaceholderFileId(mf.filePath));
-  // 仅对非 v2 的做 resolveLocalPath;v2 的占位 null,不占 socket
-  const resolvedMain = await Promise.all(
-    mediaFiles.map((mf, i) => (v2Ids[i] ? Promise.resolve(null) : resolveLocalPath(mf.filePath))),
+  const cachedIds: (string | null)[] = await Promise.all(
+    mediaFiles.map((mf) => getCachedFileId(botId, mf.id)),
   );
+  // 2) 只对真正需要上传的(cache miss + 非 v2)mediaFile 拉 S3 / 本地 path
+  const resolvedMain = await Promise.all(
+    mediaFiles.map((mf, i) =>
+      cachedIds[i] || v2Ids[i] ? Promise.resolve(null) : resolveLocalPath(mf.filePath),
+    ),
+  );
+  // 缩略图同理:cachedId 命中时 Telegram 用缓存里的缩略图,无需我们再传
   const resolvedThumb = await Promise.all(
-    mediaFiles.map((mf) => (mf.thumbnailPath ? resolveLocalPath(mf.thumbnailPath) : Promise.resolve(null))),
+    mediaFiles.map((mf, i) => {
+      if (!mf.thumbnailPath) return Promise.resolve(null);
+      if (cachedIds[i] || v2Ids[i]) return Promise.resolve(null);
+      return resolveLocalPath(mf.thumbnailPath);
+    }),
   );
   const cleanupAll = () => {
     for (const r of resolvedMain) if (r) r.cleanup();
@@ -287,7 +297,7 @@ async function sendMediaGroupBatch(
 
     for (let i = 0; i < mediaFiles.length; i++) {
       const mf = mediaFiles[i];
-      const cachedId = await getCachedFileId(botId, mf.id);
+      const cachedId = cachedIds[i];  // 复用外层预查结果,不再二次查 DB
       const itemCaption = i === 0 ? (caption ?? undefined) : undefined;
       const thumbAbs = resolvedThumb[i]?.absPath ?? null;
 
@@ -325,6 +335,16 @@ async function sendMediaGroupBatch(
       console.error('[sender] 媒体组 file_id 失效，清除缓存重试', err.message);
       for (const mf of mediaFiles) {
         await deleteCachedFileId(botId, mf.id);
+      }
+      // 之前缓存命中的 mediaFile 没下载本地 tmp,retry 要全部 resolve
+      for (let i = 0; i < mediaFiles.length; i++) {
+        if (v2Ids[i]) continue;
+        if (!resolvedMain[i]) {
+          resolvedMain[i] = await resolveLocalPath(mediaFiles[i].filePath);
+        }
+        if (mediaFiles[i].thumbnailPath && !resolvedThumb[i]) {
+          resolvedThumb[i] = await resolveLocalPath(mediaFiles[i].thumbnailPath!);
+        }
       }
       const retryItems = mediaFiles.map((mf, i) => {
         const src: string | InputFile = v2Ids[i]
