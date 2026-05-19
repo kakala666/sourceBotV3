@@ -32,9 +32,13 @@ function getClient(): S3Client {
     region: REGION,
     credentials: { accessKeyId: ACCESS_KEY, secretAccessKey: SECRET_KEY },
     forcePathStyle: false,
-    // 默认 maxSockets=50 在高并发(多人同时翻页/random)时会排队雪崩,提到 200
+    // 默认 maxSockets=50 在高并发时会排队雪崩,触发 S3 签名超过 15 分钟时间窗口报错
+    // ("The difference between the request time and the current time is too large")
+    // 提到 500;同时缩短 connectionTimeout 让卡住的 socket 早释放
     requestHandler: new NodeHttpHandler({
-      httpsAgent: new HttpsAgent({ maxSockets: 200, keepAlive: true }),
+      httpsAgent: new HttpsAgent({ maxSockets: 500, keepAlive: true }),
+      connectionTimeout: 10_000,
+      requestTimeout: 120_000,
     }),
   });
   return _s3;
