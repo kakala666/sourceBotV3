@@ -35,3 +35,29 @@ export interface BotAutoSyncConfigUpdateInput {
   enabled: boolean;
   targetBotId: number | null;
 }
+
+/** presigned URL 上传:client 提交文件元信息换 PUT URL */
+export interface PresignUploadRequestItem {
+  originalName: string;
+  mimetype: string;
+  size: number;
+}
+export interface PresignUploadResponseItem {
+  key: string;          // S3 key,例 "media/1771...-123.mp4"
+  url: string;          // PUT URL,10 分钟有效
+  contentType: string;  // 浏览器 PUT 时必须带相同 Content-Type
+}
+
+/** 上传完成后 client 通知 server 登记 Resource */
+export interface ResourceRegisterFile {
+  key: string;
+  originalName: string;
+  mimetype: string;
+  size: number;
+}
+export interface ResourceRegisterInput {
+  type?: string;             // 'photo' | 'video' | 'media_group',不传则按 files 推断
+  caption?: string;
+  groupId?: number;
+  files: ResourceRegisterFile[];
+}

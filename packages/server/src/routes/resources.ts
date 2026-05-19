@@ -1,9 +1,9 @@
 import { Router, type IRouter } from 'express';
-import multer from 'multer';
 import { ResourceService } from '../services/resource.service';
 import { authMiddleware } from '../middleware/auth';
-import { upload } from '../middleware/upload';
 import { success, fail } from '../utils/response';
+import { ALLOWED_PHOTO_TYPES, ALLOWED_VIDEO_TYPES, MAX_PHOTO_SIZE, MAX_VIDEO_SIZE } from 'shared';
+import type { PresignUploadRequestItem, ResourceRegisterFile } from 'shared';
 
 const router: IRouter = Router();
 router.use(authMiddleware);
@@ -23,40 +23,64 @@ router.get('/', async (req, res) => {
   }
 });
 
-router.post('/', (req, res) => {
-  // 不限制单次上传文件数量;发送时按 10 个/批拆分发送
-  const uploadMiddleware = upload.array('files');
-  uploadMiddleware(req, res, async (err: any) => {
-    if (err) {
-      if (err instanceof multer.MulterError) {
-        switch (err.code) {
-          case 'LIMIT_FILE_SIZE':
-            return fail(res, '单个文件大小超过 2GB 限制', 413);
-          case 'LIMIT_UNEXPECTED_FILE':
-            return fail(res, '不支持的文件字段', 400);
-          default:
-            return fail(res, `上传错误: ${err.message}`, 400);
-        }
-      }
-      return fail(res, err.message || '文件类型不支持', 400);
+/**
+ * 浏览器直传 S3 模式 - 第 1 步:为每个文件签发 presigned PUT URL。
+ * body: { files: [{ originalName, mimetype, size }, ...] }
+ */
+router.post('/presign', async (req, res) => {
+  try {
+    const items = (req.body?.files ?? []) as PresignUploadRequestItem[];
+    if (!Array.isArray(items) || items.length === 0) {
+      return fail(res, 'files 必须是非空数组', 400);
     }
-    try {
-      const files = req.files as Express.Multer.File[];
-      if (!files || files.length === 0) {
-        return fail(res, '请上传至少一个文件');
+    const allAllowed = new Set([...ALLOWED_PHOTO_TYPES, ...ALLOWED_VIDEO_TYPES]);
+    for (const f of items) {
+      if (!f.originalName || !f.mimetype || typeof f.size !== 'number') {
+        return fail(res, '文件元信息不完整 (originalName/mimetype/size)', 400);
       }
-      const { caption, groupId, type } = req.body;
-      const resource = await ResourceService.create({
-        type: type || (files.length > 1 ? 'media_group' : (files[0].mimetype.startsWith('video/') ? 'video' : 'photo')),
-        caption,
-        groupId: groupId ? parseInt(groupId) : undefined,
-        files,
-      });
-      return success(res, resource, 201);
-    } catch (err: any) {
-      return fail(res, err.message, 500);
+      if (!allAllowed.has(f.mimetype)) {
+        return fail(res, `不支持的文件类型: ${f.mimetype}`, 400);
+      }
+      const limit = f.mimetype.startsWith('video/') ? MAX_VIDEO_SIZE : MAX_PHOTO_SIZE;
+      if (f.size > limit) {
+        return fail(res, `文件 ${f.originalName} 超过大小限制`, 400);
+      }
     }
-  });
+    const presigned = await ResourceService.presignUploads(items);
+    return success(res, presigned);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
+/**
+ * 浏览器直传 S3 模式 - 第 2 步:client PUT 完所有文件后通知 server 登记 Resource。
+ * body: { type, caption, groupId, files: [{ key, originalName, mimetype, size }, ...] }
+ */
+router.post('/', async (req, res) => {
+  try {
+    const { type, caption, groupId, files } = req.body ?? {};
+    const fileList = (files ?? []) as ResourceRegisterFile[];
+    if (!Array.isArray(fileList) || fileList.length === 0) {
+      return fail(res, '至少需要一个 file', 400);
+    }
+    for (const f of fileList) {
+      if (!f.key || !f.originalName || !f.mimetype) {
+        return fail(res, 'file 元信息不完整 (key/originalName/mimetype)', 400);
+      }
+    }
+    const inferredType = type
+      || (fileList.length > 1 ? 'media_group' : (fileList[0].mimetype.startsWith('video/') ? 'video' : 'photo'));
+    const resource = await ResourceService.create({
+      type: inferredType,
+      caption,
+      groupId: groupId ? parseInt(groupId) : undefined,
+      files: fileList,
+    });
+    return success(res, resource, 201);
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
 });
 
 router.put('/:id', async (req, res) => {
@@ -88,11 +112,6 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-/**
- * 覆盖式更新资源标签(管理员标记,机器人前端不可见)。
- * body: { tags: string[] }
- * 对新增的 tag 异步触发对相关收藏用户的资源推送。
- */
 router.put('/:id/tags', async (req, res) => {
   try {
     const id = parseInt(req.params.id);

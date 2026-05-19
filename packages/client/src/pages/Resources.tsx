@@ -10,8 +10,32 @@ import {
 import type {
   ResourceInfo, ResourceGroupInfo, ResourceGroupCreateInput,
   ApiResponse, PaginatedResponse, ResourceType,
+  PresignUploadResponseItem,
 } from 'shared';
 import api from '@/services/api';
+
+/** 用 XMLHttpRequest 做单文件 PUT 到 presigned URL,返回 promise + 进度回调 */
+function putToS3WithProgress(
+  url: string,
+  file: File,
+  contentType: string,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    xhr.setRequestHeader('Content-Type', contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) onProgress(e.loaded, e.total);
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else reject(new Error(`S3 PUT 失败 HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error('S3 PUT 网络错误'));
+    xhr.send(file);
+  });
+}
 
 const { Title } = Typography;
 const { Search } = Input;
@@ -180,25 +204,59 @@ export default function Resources() {
   const handleUpload = async () => {
     try {
       const values = await uploadForm.validateFields();
-      const formData = new FormData();
-      formData.append('type', values.type);
-      if (values.groupId) formData.append('groupId', values.groupId);
-      if (values.caption) formData.append('caption', values.caption);
-      const fileList = values.files?.fileList || [];
-      fileList.forEach((f: { originFileObj: File }) => {
-        formData.append('files', f.originFileObj);
-      });
+      const fileList = (values.files?.fileList || []) as { originFileObj: File }[];
+      if (fileList.length === 0) {
+        message.error('请选择文件');
+        return;
+      }
+      const fileMetas = fileList.map((f) => ({
+        originalName: f.originFileObj.name,
+        mimetype: f.originFileObj.type || (f.originFileObj.name.match(/\.(mp4|mov|webm|m4v)$/i) ? 'video/mp4' : 'application/octet-stream'),
+        size: f.originFileObj.size,
+      }));
       setUploading(true);
       setUploadProgress(0);
-      await api.post('/resources', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000,
-        onUploadProgress: (e) => {
-          if (e.total) {
-            setUploadProgress(Math.round((e.loaded / e.total) * 100));
-          }
-        },
+
+      // 1) 让 server 签发 presigned PUT URLs
+      const { data: presignResp } = await api.post<ApiResponse<PresignUploadResponseItem[]>>(
+        '/resources/presign',
+        { files: fileMetas },
+      );
+      const presigned = presignResp.data || [];
+      if (presigned.length !== fileList.length) {
+        throw new Error('签名数量与文件数量不一致');
+      }
+
+      // 2) 并发 PUT 到 S3,总进度按字节求和
+      const totalBytes = fileMetas.reduce((s, f) => s + f.size, 0);
+      const loadedPerFile = new Array(fileList.length).fill(0);
+      const updateOverall = () => {
+        const loaded = loadedPerFile.reduce((s, v) => s + v, 0);
+        setUploadProgress(totalBytes > 0 ? Math.round((loaded / totalBytes) * 100) : 0);
+      };
+      await Promise.all(
+        fileList.map((f, i) =>
+          putToS3WithProgress(presigned[i].url, f.originFileObj, presigned[i].contentType, (loaded) => {
+            loadedPerFile[i] = loaded;
+            updateOverall();
+          }),
+        ),
+      );
+      setUploadProgress(100);
+
+      // 3) 通知 server 登记 Resource
+      await api.post('/resources', {
+        type: values.type,
+        caption: values.caption,
+        groupId: values.groupId,
+        files: presigned.map((p, i) => ({
+          key: p.key,
+          originalName: fileMetas[i].originalName,
+          mimetype: fileMetas[i].mimetype,
+          size: fileMetas[i].size,
+        })),
       });
+
       message.success('上传成功');
       setUploadModalOpen(false);
       uploadForm.resetFields();
