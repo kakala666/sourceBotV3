@@ -10,16 +10,16 @@ const UPLOADS_ROOT = process.env.UPLOAD_DIR
   : path.resolve(process.cwd(), 'uploads');
 
 /**
- * v2 系统迁过来的 placeholder:filePath 形如 'v2-placeholder/<file_id>.<ext>'。
- * 这种 MediaFile 没有本地副本也没有 S3 副本,直接把 file_id 给 Telegram 用。
+ * v2 系统迁过来的占位符:filePath 形如 'v2-<bucket>/<file_id>.<ext>'
+ * 已知前缀:'v2-placeholder/', 'v2-media/'。这种 MediaFile 没有本地副本
+ * 也没有 S3 副本,直接把 file_id 给 Telegram 用。
  * 返回 file_id 字符串,匹配不到返回 null。
  */
 function extractV2PlaceholderFileId(filePath: string): string | null {
-  const PREFIX = 'v2-placeholder/';
-  if (!filePath.startsWith(PREFIX)) return null;
-  const rest = filePath.slice(PREFIX.length);
+  const m = filePath.match(/^v2-[^/]+\/(.+)$/);
+  if (!m) return null;
   // 去掉可能的扩展名(.mp4/.jpg/...)
-  return rest.replace(/\.[^/.]+$/, '');
+  return m[1].replace(/\.[^/.]+$/, '');
 }
 
 /**
