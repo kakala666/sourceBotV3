@@ -12,9 +12,14 @@ import fs from 'fs';
 import prisma from '../src/prisma';
 import { uploadLocalFile, headSize, makeS3Path, S3_PREFIX } from '../src/services/storage';
 
-const UPLOADS_ROOT = process.env.UPLOAD_DIR
-  ? path.resolve(process.env.UPLOAD_DIR)
-  : '/opt/sourceBotV3/uploads';
+// 注意:不能用 process.env.UPLOAD_DIR 直接 resolve, 因为 `pnpm --filter bot exec` 会把 cwd
+// 切到 packages/bot/, 而 .env 里 UPLOAD_DIR 是相对路径 (./uploads), 会被解析到错误位置。
+// 显式以 /opt/sourceBotV3 为基准, 或要求 env 写绝对路径才接受。
+const UPLOADS_ROOT = (() => {
+  const env = process.env.UPLOAD_DIR;
+  if (env && path.isAbsolute(env)) return env;
+  return '/opt/sourceBotV3/uploads';
+})();
 
 const S3_MEDIA_PREFIX = 'media/';
 
