@@ -12,6 +12,7 @@ import settingsRouter from './settings';
 import adminsRouter from './admins';
 import subscriptionGateRouter from './subscription-gate';
 import botSubscriptionGateRouter from './bot-subscription-gate';
+import botAutoSyncRouter from './bot-auto-sync';
 
 const router: IRouter = Router();
 
@@ -20,6 +21,7 @@ router.use('/bots', botsRouter);
 router.use('/bots', linksRouter);
 router.use('/links', subscriptionGateRouter);
 router.use('/bots', botSubscriptionGateRouter);
+router.use('/bots', botAutoSyncRouter);
 router.use('/resources', resourcesRouter);
 router.use('/resource-groups', resourceGroupsRouter);
 router.use('/links', contentsRouter);

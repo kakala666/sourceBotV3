@@ -7,6 +7,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 import { BotManager } from './manager/bot-manager';
 import { startBroadcastServer } from './broadcast/server';
 import { cleanupOrphanedTmpsOnStartup } from './services/storage';
+import { startAutoSyncScheduler } from './services/bot-auto-sync-scheduler';
 
 const manager = new BotManager();
 
@@ -15,6 +16,9 @@ async function main() {
 
   // bot 重启意味着所有 in-flight 的 sender 下载/入库都已断,/tmp/sb-* 必然是孤儿
   cleanupOrphanedTmpsOnStartup();
+
+  // 每天 00:00 跑一次 BotAutoSyncConfig.enabled=true 的同步
+  startAutoSyncScheduler();
 
   await manager.start();
 

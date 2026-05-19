@@ -19,3 +19,19 @@ export interface BotUpdateInput {
   name?: string;
   isActive?: boolean;
 }
+
+/** 每天 0 点定时同步:从 targetBot 同名链接拉 ContentBinding 覆盖本 bot 同名链接 */
+export interface BotAutoSyncConfigInfo {
+  botId: number;
+  enabled: boolean;
+  targetBotId: number | null;
+  targetBotName?: string | null;
+  lastSyncAt: string | null;
+  lastSyncStatus: 'success' | 'failed' | 'partial' | null;
+  lastSyncMessage: string | null;
+}
+
+export interface BotAutoSyncConfigUpdateInput {
+  enabled: boolean;
+  targetBotId: number | null;
+}

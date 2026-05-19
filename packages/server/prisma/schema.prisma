@@ -30,8 +30,33 @@ model Bot {
   inviteLinks      InviteLink[]
   fileIds          BotFileId[]
   botUsers         BotUser[]
-  channelGroups    ResourceGroup[]   @relation("ChannelGroupSourceBot")
+  channelGroups    ResourceGroup[]      @relation("ChannelGroupSourceBot")
   subscriptionGate BotSubscriptionGate?
+  // 自动同步:本 bot 是同步发起方(每天 0 点从 target 拉同名链接的资源内容)
+  autoSyncConfig         BotAutoSyncConfig?  @relation("AutoSyncOwner")
+  // 自动同步:其他 bot 引用本 bot 作为同步目标
+  autoSyncTargetedBy     BotAutoSyncConfig[] @relation("AutoSyncTarget")
+}
+
+/**
+ * 每个 bot 的自动同步配置(一对一)。
+ * 启用后,每天凌晨 00:00 比对 botId 与 targetBotId 的 InviteLink (按 name 同名匹配),
+ * 把目标 bot 这条链接下的 ContentBinding (仅 resourceId + sortOrder, 不含 buttons)
+ * 完全覆盖到本 bot 这条链接。订阅频道/赞助商/按钮均不同步。
+ */
+model BotAutoSyncConfig {
+  id              Int      @id @default(autoincrement())
+  botId           Int      @unique
+  enabled         Boolean  @default(false)
+  targetBotId     Int?
+  lastSyncAt      DateTime?
+  lastSyncStatus  String?   // 'success' | 'failed' | 'partial'
+  lastSyncMessage String?   // 概要,例如 "同步 5 链接 / 89 资源"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bot       Bot  @relation("AutoSyncOwner", fields: [botId], references: [id], onDelete: Cascade)
+  targetBot Bot? @relation("AutoSyncTarget", fields: [targetBotId], references: [id], onDelete: SetNull)
 }
 
 model InviteLink {
