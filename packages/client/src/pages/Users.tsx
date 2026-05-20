@@ -140,9 +140,9 @@ export default function Users() {
     },
     {
       title: '最后使用',
-      dataIndex: 'lastSeenAt',
       key: 'lastSeenAt',
-      render: (v: string) => dayjs(v).format('YYYY-MM-DD HH:mm'),
+      render: (_: unknown, r: BotUserInfo) =>
+        r.lastSeenAt === r.firstSeenAt ? '无' : dayjs(r.lastSeenAt).format('YYYY-MM-DD HH:mm'),
     },
     {
       title: '操作',
