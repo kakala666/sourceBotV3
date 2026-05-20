@@ -98,12 +98,18 @@ function buildGateConfig(g: any): GateConfig {
   };
 }
 
+/**
+ * 优先级:bot 级 gate 启用 → 全局覆盖,忽略 link 级。
+ * 否则回退到 link 级。
+ * (bot 级 isEnabled=false 等同于"未配置",不参与覆盖,继续看 link 级)
+ */
 export function getGateConfig(inviteLinkId: number): GateConfig | undefined {
-  const linkGate = configCache.get(inviteLinkId);
-  if (linkGate) return linkGate;
   const botId = linkToBotMap.get(inviteLinkId);
-  if (botId === undefined) return undefined;
-  return botGateCache.get(botId);
+  if (botId !== undefined) {
+    const botGate = botGateCache.get(botId);
+    if (botGate?.isEnabled) return botGate;
+  }
+  return configCache.get(inviteLinkId);
 }
 
 function isMember(status: string): boolean {
