@@ -4,7 +4,7 @@ import {
   Table, Button, Modal, Form, Input, Space, message, Popconfirm, Typography, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, CopyOutlined, LockOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, ArrowLeftOutlined, LockOutlined,
 } from '@ant-design/icons';
 import type {
   InviteLinkInfo, InviteLinkCreateInput, BotInfo,
@@ -62,11 +62,6 @@ export default function Links() {
     return `t.me/BOT?start=${code}`;
   };
 
-  const copyLink = (code: string) => {
-    navigator.clipboard.writeText(getFullLink(code));
-    message.success('已复制到剪贴板');
-  };
-
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -121,7 +116,6 @@ export default function Links() {
               {getFullLink(record.code)}
             </span>
           </Tooltip>
-          <Button size="small" icon={<CopyOutlined />} onClick={() => copyLink(record.code)} />
         </Space>
       ),
     },
