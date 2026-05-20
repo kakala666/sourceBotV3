@@ -73,6 +73,9 @@ export class StatsService {
   }): Promise<LinkStat[]> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
 
     const linkWhere: any = {};
     if (params.botId) linkWhere.botId = params.botId;
@@ -85,28 +88,54 @@ export class StatsService {
     const results: LinkStat[] = [];
 
     for (const link of links) {
-      const userWhere: any = { inviteLinkId: link.id };
       const adWhere: any = { inviteLinkId: link.id };
 
       if (params.startDate) {
         const start = new Date(params.startDate);
         start.setHours(0, 0, 0, 0);
-        userWhere.firstSeenAt = { ...userWhere.firstSeenAt, gte: start };
         adWhere.viewedAt = { ...adWhere.viewedAt, gte: start };
       }
       if (params.endDate) {
         const end = new Date(params.endDate);
         end.setHours(23, 59, 59, 999);
-        userWhere.firstSeenAt = { ...userWhere.firstSeenAt, lte: end };
         adWhere.viewedAt = { ...adWhere.viewedAt, lte: end };
       }
 
-      const [totalUsers, todayUsers, totalAdImpressions] = await Promise.all([
+      const [
+        totalUsers,
+        todayUsers,
+        monthlyNewUsers,
+        totalAdImpressions,
+        todaySecondaryRows,
+        monthlySecondaryRows,
+      ] = await Promise.all([
         prisma.botUser.count({ where: { inviteLinkId: link.id } }),
         prisma.botUser.count({
           where: { inviteLinkId: link.id, firstSeenAt: { gte: todayStart } },
         }),
+        prisma.botUser.count({
+          where: { inviteLinkId: link.id, firstSeenAt: { gte: monthStart } },
+        }),
         prisma.adImpression.count({ where: adWhere }),
+        // 今日二次操作:在本链接下今日点过 next/reveal 的 distinct user
+        prisma.buttonClick.findMany({
+          where: {
+            inviteLinkId: link.id,
+            buttonType: { in: ['next', 'reveal'] },
+            clickedAt: { gte: todayStart },
+          },
+          distinct: ['botUserId'],
+          select: { botUserId: true },
+        }),
+        prisma.buttonClick.findMany({
+          where: {
+            inviteLinkId: link.id,
+            buttonType: { in: ['next', 'reveal'] },
+            clickedAt: { gte: monthStart },
+          },
+          distinct: ['botUserId'],
+          select: { botUserId: true },
+        }),
       ]);
 
       results.push({
@@ -116,6 +145,9 @@ export class StatsService {
         botName: link.bot.name,
         totalUsers,
         todayUsers,
+        monthlyNewUsers,
+        todaySecondaryUsers: todaySecondaryRows.length,
+        monthlySecondaryUsers: monthlySecondaryRows.length,
         totalAdImpressions,
       });
     }

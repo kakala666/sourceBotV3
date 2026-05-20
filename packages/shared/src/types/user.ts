@@ -45,6 +45,9 @@ export interface LinkStat {
   botName: string;
   totalUsers: number;
   todayUsers: number;
+  monthlyNewUsers: number;           // 本月新增 (firstSeenAt 在本月)
+  todaySecondaryUsers: number;       // 今日在该链接下点过 next/reveal 的 distinct user 数
+  monthlySecondaryUsers: number;     // 本月在该链接下点过 next/reveal 的 distinct user 数
   totalAdImpressions: number;
 }
 

@@ -199,6 +199,9 @@ export default function Stats() {
     { title: 'Code', dataIndex: 'linkCode', key: 'linkCode' },
     { title: '总用户', dataIndex: 'totalUsers', key: 'totalUsers', sorter: (a: LinkStat, b: LinkStat) => a.totalUsers - b.totalUsers },
     { title: '今日新增', dataIndex: 'todayUsers', key: 'todayUsers', sorter: (a: LinkStat, b: LinkStat) => a.todayUsers - b.todayUsers },
+    { title: '本月新增', dataIndex: 'monthlyNewUsers', key: 'monthlyNewUsers', sorter: (a: LinkStat, b: LinkStat) => a.monthlyNewUsers - b.monthlyNewUsers },
+    { title: '今日二次操作(去重)', dataIndex: 'todaySecondaryUsers', key: 'todaySecondaryUsers', sorter: (a: LinkStat, b: LinkStat) => a.todaySecondaryUsers - b.todaySecondaryUsers },
+    { title: '本月二次操作(去重)', dataIndex: 'monthlySecondaryUsers', key: 'monthlySecondaryUsers', sorter: (a: LinkStat, b: LinkStat) => a.monthlySecondaryUsers - b.monthlySecondaryUsers },
     { title: '总广告展示', dataIndex: 'totalAdImpressions', key: 'totalAdImpressions' },
   ];
 
