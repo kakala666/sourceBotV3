@@ -11,15 +11,17 @@ let prismaRef: any = prisma;
 export function _setPrismaForTests(p: any) { prismaRef = p; }
 
 /**
- * 从「至少被一个 ContentBinding 引用过」的 Resource 中随机抽 1 条,
+ * 从「至少被一个 ContentBinding 引用过 且 type='media_group'」的 Resource 中随机抽 1 条,
  * 包含按 sortOrder 排好的 mediaFiles。
  * 资源池为空时返回 null。
+ * (限制只能抽媒体组 — 单文件 photo/video 不参与"随便看看"池子)
  */
 export async function pickRandomContentResource(): Promise<RandomResource | null> {
   const rows = await prismaRef.$queryRaw<{ id: number }[]>`
     SELECT r.id
     FROM "Resource" r
-    WHERE EXISTS (SELECT 1 FROM "ContentBinding" cb WHERE cb."resourceId" = r.id)
+    WHERE r.type = 'media_group'
+      AND EXISTS (SELECT 1 FROM "ContentBinding" cb WHERE cb."resourceId" = r.id)
     ORDER BY random()
     LIMIT 1;
   `;
