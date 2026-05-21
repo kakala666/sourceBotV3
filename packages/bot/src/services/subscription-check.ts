@@ -99,17 +99,31 @@ function buildGateConfig(g: any): GateConfig {
 }
 
 /**
- * 优先级:bot 级 gate 启用 → 全局覆盖,忽略 link 级。
- * 否则回退到 link 级。
- * (bot 级 isEnabled=false 等同于"未配置",不参与覆盖,继续看 link 级)
+ * 新职责拆分:
+ *   - link 级 gate 只贡献 primaryChannels (该 link 独立的主频道)
+ *   - bot 级 gate 只贡献 sponsorChannels + sponsorPositions (同 bot 全局赞助)
+ *
+ * 任一启用且有 channels 就需要拦截。promptTemplate 优先 link,fallback bot。
+ * 历史脏数据(link gate 有 sponsor / bot gate 有 primary)会被这里过滤掉。
  */
 export function getGateConfig(inviteLinkId: number): GateConfig | undefined {
+  const linkGate = configCache.get(inviteLinkId);
   const botId = linkToBotMap.get(inviteLinkId);
-  if (botId !== undefined) {
-    const botGate = botGateCache.get(botId);
-    if (botGate?.isEnabled) return botGate;
-  }
-  return configCache.get(inviteLinkId);
+  const botGate = botId !== undefined ? botGateCache.get(botId) : undefined;
+
+  const primaryChannels = linkGate?.isEnabled ? linkGate.primaryChannels : [];
+  const sponsorChannels = botGate?.isEnabled ? botGate.sponsorChannels : [];
+  const sponsorPositions = botGate?.isEnabled ? botGate.sponsorPositions : [];
+
+  if (primaryChannels.length === 0 && sponsorChannels.length === 0) return undefined;
+
+  return {
+    isEnabled: true,
+    promptTemplate: linkGate?.promptTemplate ?? botGate?.promptTemplate ?? null,
+    primaryChannels,
+    sponsorChannels,
+    sponsorPositions,
+  };
 }
 
 function isMember(status: string): boolean {

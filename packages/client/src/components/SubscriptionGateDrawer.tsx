@@ -123,12 +123,17 @@ export default function SubscriptionGateDrawer({
       setNewUrl('');
       setNewChatId('');
       setMode('public');
-      setKind('primary');
+      setKind(effectiveLevel === 'bot' ? 'sponsor' : 'primary');
       setAddError(null);
       setPositionsText('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, effectiveTargetId]);
+
+  // level=link 时锁 kind='primary',level=bot 时锁 kind='sponsor'
+  useEffect(() => {
+    setKind(effectiveLevel === 'bot' ? 'sponsor' : 'primary');
+  }, [effectiveLevel]);
 
   const toggleEnabled = async (checked: boolean) => {
     if (!effectiveTargetId) return;
@@ -327,15 +332,11 @@ export default function SubscriptionGateDrawer({
           <Divider orientation="left">添加频道</Divider>
 
           <Space direction="vertical" style={{ width: '100%' }} size={8}>
-            <Segmented
-              value={kind}
-              onChange={(v) => { setKind(v as ChannelKind); setAddError(null); }}
-              options={[
-                { label: '主频道(必订)', value: 'primary' },
-                { label: '广告赞助商', value: 'sponsor' },
-              ]}
-              block
-            />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {effectiveLevel === 'bot'
+                ? '本面板仅配置广告赞助商(同 bot 下所有链接共用)。主频道在各链接独立配置。'
+                : '本面板仅配置主频道(每次都校验)。广告赞助商在「机器人 → 全局订阅」配置。'}
+            </Text>
             <Segmented
               value={mode}
               onChange={(v) => { setMode(v as 'public' | 'private'); setAddError(null); }}
@@ -386,66 +387,74 @@ export default function SubscriptionGateDrawer({
             {addError && <Text type="danger">{addError}</Text>}
           </Space>
 
-          <Divider orientation="left">主频道(每次都校验)</Divider>
-          <List
-            dataSource={primaryChannels}
-            locale={{ emptyText: '尚未添加主频道' }}
-            renderItem={renderChannelRow}
-          />
+          {effectiveLevel === 'link' && (
+            <>
+              <Divider orientation="left">主频道(每次都校验)</Divider>
+              <List
+                dataSource={primaryChannels}
+                locale={{ emptyText: '尚未添加主频道' }}
+                renderItem={renderChannelRow}
+              />
+            </>
+          )}
 
-          <Divider orientation="left">广告赞助商(按位置轮询,可拖拽排序)</Divider>
-          <Paragraph type="secondary" style={{ fontSize: 12 }}>
-            按下方「触发位置」决定在第几个资源时检测对应赞助商:位置 i 命中赞助商 i。
-            位置数量必须等于赞助商数量,未配置时默认为 <Text code>3,6,9,12,…</Text>。
-          </Paragraph>
-          <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
-            <Input
-              placeholder="例如 3,6,9(英文逗号,严格递增,无空格)"
-              value={positionsText}
-              onChange={(e) => setPositionsText(e.target.value)}
-              onPressEnter={savePositions}
-              disabled={positionsSaving}
-            />
-            <Button type="primary" onClick={savePositions} loading={positionsSaving}>
-              保存位置
-            </Button>
-          </Space.Compact>
+          {effectiveLevel === 'bot' && (
+            <>
+              <Divider orientation="left">广告赞助商(按位置轮询,可拖拽排序)</Divider>
+              <Paragraph type="secondary" style={{ fontSize: 12 }}>
+                按下方「触发位置」决定在第几个资源时检测对应赞助商:位置 i 命中赞助商 i。
+                位置数量必须等于赞助商数量,未配置时默认为 <Text code>3,6,9,12,…</Text>。
+              </Paragraph>
+              <Space.Compact style={{ width: '100%', marginBottom: 8 }}>
+                <Input
+                  placeholder="例如 3,6,9(英文逗号,严格递增,无空格)"
+                  value={positionsText}
+                  onChange={(e) => setPositionsText(e.target.value)}
+                  onPressEnter={savePositions}
+                  disabled={positionsSaving}
+                />
+                <Button type="primary" onClick={savePositions} loading={positionsSaving}>
+                  保存位置
+                </Button>
+              </Space.Compact>
 
-          {sponsorChannels.length === 0 ? (
-            <Text type="secondary">尚未添加赞助商频道</Text>
-          ) : (
-            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSponsorDragEnd}>
-              <SortableContext
-                items={sponsorChannels.map((c) => c.id)}
-                strategy={verticalListSortingStrategy}
-              >
-                {sponsorChannels.map((c, idx) => {
-                  const pos = gate?.sponsorPositions?.[idx];
-                  return (
-                    <SortableSponsorRow key={c.id} id={c.id}>
-                      <div style={{ borderBottom: '1px solid #f0f0f0', padding: '8px 0' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <div>
-                            <Tag color="gold">位置 {pos ?? '—'}</Tag>
-                            <Text>{c.isPrivate ? '🔒' : '📢'} {c.title}</Text>{' '}
-                            <Text type="secondary">{c.isPrivate ? `id: ${c.chatId}` : `@${c.username}`}</Text>
+              {sponsorChannels.length === 0 ? (
+                <Text type="secondary">尚未添加赞助商频道</Text>
+              ) : (
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSponsorDragEnd}>
+                  <SortableContext
+                    items={sponsorChannels.map((c) => c.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {sponsorChannels.map((c, idx) => {
+                      const pos = gate?.sponsorPositions?.[idx];
+                      return (
+                        <SortableSponsorRow key={c.id} id={c.id}>
+                          <div style={{ borderBottom: '1px solid #f0f0f0', padding: '8px 0' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                              <div>
+                                <Tag color="gold">位置 {pos ?? '—'}</Tag>
+                                <Text>{c.isPrivate ? '🔒' : '📢'} {c.title}</Text>{' '}
+                                <Text type="secondary">{c.isPrivate ? `id: ${c.chatId}` : `@${c.username}`}</Text>
+                              </div>
+                              <Space size={4}>
+                                <Tag color={STATUS_TAG[c.status].color}>{STATUS_TAG[c.status].text}</Tag>
+                                <Button size="small" icon={<ReloadOutlined />} onClick={() => recheckChannel(c.id)}>
+                                  重新验证
+                                </Button>
+                                <Popconfirm title="确定移除？" onConfirm={() => removeChannel(c.id)}>
+                                  <Button size="small" danger icon={<DeleteOutlined />}>移除</Button>
+                                </Popconfirm>
+                              </Space>
+                            </div>
                           </div>
-                          <Space size={4}>
-                            <Tag color={STATUS_TAG[c.status].color}>{STATUS_TAG[c.status].text}</Tag>
-                            <Button size="small" icon={<ReloadOutlined />} onClick={() => recheckChannel(c.id)}>
-                              重新验证
-                            </Button>
-                            <Popconfirm title="确定移除？" onConfirm={() => removeChannel(c.id)}>
-                              <Button size="small" danger icon={<DeleteOutlined />}>移除</Button>
-                            </Popconfirm>
-                          </Space>
-                        </div>
-                      </div>
-                    </SortableSponsorRow>
-                  );
-                })}
-              </SortableContext>
-            </DndContext>
+                        </SortableSponsorRow>
+                      );
+                    })}
+                  </SortableContext>
+                </DndContext>
+              )}
+            </>
           )}
 
           <Divider orientation="left">提示文案模板</Divider>
