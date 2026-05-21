@@ -5,6 +5,8 @@ import { handleCallback } from '../handlers/callback';
 import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
 import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
+import { handleSearchEntry, handleSearchQuery } from '../handlers/search';
+import { consumePending } from '../services/search-pending';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
 import { reloadGlobalButtons } from '../services/bot-global-buttons';
@@ -227,10 +229,30 @@ export class BotManager {
       });
     });
 
-    // 私聊消息自动回复广告
+    // 常驻键盘按钮:🔍 搜索
+    bot.hears('🔍 搜索', (ctx) => {
+      const tgId = ctx.from?.id;
+      if (tgId && shouldThrottle(botId, tgId)) {
+        sendThrottledNotice(ctx, botId, tgId);
+        return;
+      }
+      handleSearchEntry(ctx, botId).catch((err: any) => {
+        console.error(`[Bot ${botId}] search entry 处理失败:`, err.message);
+      });
+    });
+
+    // 私聊消息:在 search pending 时当搜索词;否则原 autoReply
     bot.on('message', (ctx, next) => {
       if (ctx.chat?.type !== 'private') {
         return next();
+      }
+      const text = ctx.message?.text;
+      const tgId = ctx.from?.id;
+      if (text && tgId && consumePending(botId, tgId)) {
+        handleSearchQuery(ctx, botId, text).catch((err: any) => {
+          console.error(`[Bot ${botId}] search query 处理失败:`, err.message);
+        });
+        return;
       }
       handleAutoReply(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] auto-reply 处理失败:`, err.message);

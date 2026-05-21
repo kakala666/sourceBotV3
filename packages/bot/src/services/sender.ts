@@ -556,12 +556,12 @@ export async function sendEndContent(
 }
 
 /**
- * 常驻底部 reply keyboard:🎲 随便看看 / ⭐ 我的收藏
+ * 常驻底部 reply keyboard:🎲 随便看看 / 🔍 搜索 / ⭐ 我的收藏
  * 一旦发出,Telegram 客户端持续显示直到 ReplyKeyboardRemove。
  */
 export function buildHomeReplyKeyboard(): Keyboard {
   return new Keyboard()
-    .text('🎲 随便看看').text('⭐ 我的收藏')
+    .text('🎲 随便看看').text('🔍 搜索').text('⭐ 我的收藏')
     .resized().persistent();
 }
 

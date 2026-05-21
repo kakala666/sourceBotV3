@@ -176,17 +176,20 @@ export async function ensureSubscribed(
   telegramId: bigint,
   botApi: Api,
   position?: number,
+  options?: { skipPrimary?: boolean },
 ): Promise<CheckResult> {
   const config = getGateConfig(inviteLinkId);
   if (!config?.isEnabled) return { ok: true };
 
   const missing: { username: string | null; title: string; inviteUrl: string }[] = [];
 
-  // 主频道:始终查
-  for (const channel of config.primaryChannels) {
-    const res = await checkChannelMembership(inviteLinkId, channel, telegramId, botApi);
-    if (res === false) {
-      missing.push({ username: channel.username, title: channel.title, inviteUrl: channel.inviteUrl });
+  // 主频道:默认始终查;skipPrimary=true 时跳过(搜索模式)
+  if (!options?.skipPrimary) {
+    for (const channel of config.primaryChannels) {
+      const res = await checkChannelMembership(inviteLinkId, channel, telegramId, botApi);
+      if (res === false) {
+        missing.push({ username: channel.username, title: channel.title, inviteUrl: channel.inviteUrl });
+      }
     }
   }
 

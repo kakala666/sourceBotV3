@@ -322,7 +322,11 @@ async function processNextPage(
   trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
-  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex);
+  // search 模式跳过主频道,只查赞助商
+  const gateResult = await ensureSubscribed(
+    botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
+    { skipPrimary: session.mode === 'search' },
+  );
   if (!gateResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
     await sendSubscriptionPrompt(ctx, config?.promptTemplate, sessionId, nextIndex, gateResult.missing);
@@ -341,6 +345,8 @@ async function processNextPage(
     await completeSession(sessionId);
     if (session.mode === 'favorite') {
       await ctx.reply('你的收藏全部看完了 🎯');
+    } else if (session.mode === 'search') {
+      await ctx.reply('搜索结果浏览完毕 🔍');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);
@@ -415,6 +421,8 @@ async function processNextPage(
     await completeSession(sessionId);
     if (session.mode === 'favorite') {
       await ctx.reply('你的收藏全部看完了 🎯');
+    } else if (session.mode === 'search') {
+      await ctx.reply('搜索结果浏览完毕 🔍');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);

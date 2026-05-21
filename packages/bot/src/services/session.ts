@@ -40,7 +40,7 @@ export async function upsertBotUser(
  */
 export async function resetSession(
   botUserId: number,
-  options?: { mode?: 'link' | 'favorite' | 'single'; payload?: any },
+  options?: { mode?: 'link' | 'favorite' | 'single' | 'search'; payload?: any },
 ) {
   // 将该用户所有未完成会话标记为已完成
   await prisma.userSession.updateMany({
@@ -123,6 +123,21 @@ export async function loadSequenceForSession(session: {
       include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
     });
     return r ? [{ resource: r as any, buttons: null, sortOrder: 0 }] : [];
+  }
+  if (session.mode === 'search') {
+    const ids: number[] = session.payload?.resourceIds ?? [];
+    if (ids.length === 0) return [];
+    const list = await prisma.resource.findMany({
+      where: { id: { in: ids } },
+      include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
+    });
+    const byId = new Map(list.map((r) => [r.id, r]));
+    const items: SequenceItem[] = [];
+    ids.forEach((id, i) => {
+      const r = byId.get(id);
+      if (r) items.push({ resource: r as any, buttons: null, sortOrder: i });
+    });
+    return items;
   }
   return loadContentBindings(session.botUser.inviteLinkId) as any;
 }
