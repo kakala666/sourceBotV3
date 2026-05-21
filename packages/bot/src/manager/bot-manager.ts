@@ -8,6 +8,7 @@ import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keybo
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
 import { reloadGlobalButtons } from '../services/bot-global-buttons';
+import { protectContentTransformer } from '../services/protect-content';
 import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
 import path from 'path';
@@ -123,6 +124,8 @@ export class BotManager {
     try {
       const apiRoot = process.env.TELEGRAM_API_ROOT || 'https://api.telegram.org';
       const bot = new Bot(token, { client: { apiRoot } });
+      // 全局禁止转发:所有 send/forward/copy 类 API 自动注入 protect_content=true
+      bot.api.config.use(protectContentTransformer);
       this.registerHandlers(bot, botId);
 
       // 启动 polling（非阻塞）
