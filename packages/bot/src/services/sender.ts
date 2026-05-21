@@ -395,6 +395,7 @@ function buildContentKeyboard(
   searchMoreUrl?: string,
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
   globalButtons?: { text: string; url: string }[] | null,
+  likeInfo?: { sessionId: number; resourceId: number; liked: boolean } | null,
 ): InlineKeyboard | undefined {
   // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
   const validContentButtons = (contentButtons ?? []).filter(
@@ -408,8 +409,9 @@ function buildContentKeyboard(
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
   const hasReveal = !!revealInfo;
   const hasFav = !!favoriteInfo;
+  const hasLike = !!likeInfo;
 
-  if (!hasContentBtns && !hasGlobalBtns && !hasPageBtn && !hasReveal && !hasFav) return undefined;
+  if (!hasContentBtns && !hasGlobalBtns && !hasPageBtn && !hasReveal && !hasFav && !hasLike) return undefined;
 
   const keyboard = new InlineKeyboard();
 
@@ -432,9 +434,17 @@ function buildContentKeyboard(
     keyboard.text('🔽 展开更多', `reveal:${revealInfo!.sessionId}:${revealInfo!.currentIndex}`).row();
   }
 
-  // 「⭐ 收藏」在 展开 下方、搜索更多上方
-  if (hasFav) {
-    keyboard.text('⭐ 收藏', `fav:${favoriteInfo!.sessionId}:${favoriteInfo!.resourceId}`).row();
+  // 「👍 点赞 / ❌ 取消点赞」+「⭐ 收藏」同一行(都是用户对资源的副动作)
+  if (hasLike || hasFav) {
+    if (hasLike) {
+      const text = likeInfo!.liked ? '❌ 取消点赞' : '👍 点赞';
+      const action = likeInfo!.liked ? 'unlike' : 'like';
+      keyboard.text(text, `${action}:${likeInfo!.sessionId}:${likeInfo!.resourceId}`);
+    }
+    if (hasFav) {
+      keyboard.text('⭐ 收藏', `fav:${favoriteInfo!.sessionId}:${favoriteInfo!.resourceId}`);
+    }
+    keyboard.row();
   }
 
   // 「搜索更多资源」紧贴翻页按钮上方(仅当有翻页按钮时显示)

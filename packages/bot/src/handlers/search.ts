@@ -3,6 +3,7 @@ import prisma from '../prisma';
 import { resetSession } from '../services/session';
 import { sendResource, buildContentKeyboard } from '../services/sender';
 import { getGlobalButtons } from '../services/bot-global-buttons';
+import { isLiked } from '../services/resource-like';
 import { searchResources } from '../services/resource-search';
 import { markPending } from '../services/search-pending';
 
@@ -71,6 +72,8 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   const filteredResource = { ...first, mediaFiles: visibleMediaFiles };
   const revealInfo = hasHidden ? { sessionId: session.id, currentIndex: 0 } : null;
   const favoriteInfo = { sessionId: session.id, resourceId: first.id };
+  const liked = await isLiked(botUser.id, first.id);
+  const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
@@ -82,9 +85,9 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   // 搜索路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
   let keyboard;
   if (ids.length > 1) {
-    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
+    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
   } else {
-    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
+    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
   }
 
   try {

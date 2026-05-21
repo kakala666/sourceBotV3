@@ -9,9 +9,10 @@ import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
+import { addLike, removeLike, isLiked } from '../services/resource-like';
 
 /** 这些 callback data 前缀对应用户业务按钮,需要 3s 节流(订阅复核 / 频道管理操作不限) */
-const THROTTLED_CB_PREFIXES = ['next:', 'reveal:', 'fav:'];
+const THROTTLED_CB_PREFIXES = ['next:', 'reveal:', 'fav:', 'like:', 'unlike:'];
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -181,6 +182,55 @@ export async function handleCallback(ctx: Context, botId: number) {
     } catch (err: any) {
       console.error('[callback] fav 处理失败:', err.message);
       await ctx.answerCallbackQuery({ text: '收藏失败,请重试' }).catch(() => {});
+    }
+    return;
+  }
+
+  // 点赞 / 取消点赞:静默切换按钮文字 + DB upsert/delete
+  const likeMatch = data.match(/^(like|unlike):(\d+):(\d+)$/);
+  if (likeMatch) {
+    const action = likeMatch[1] as 'like' | 'unlike';
+    const sessionId = parseInt(likeMatch[2], 10);
+    const resourceId = parseInt(likeMatch[3], 10);
+    try {
+      const session = await prisma.userSession.findUnique({
+        where: { id: sessionId },
+        include: { botUser: { select: { id: true } } },
+      });
+      if (!session) {
+        await ctx.answerCallbackQuery({ text: '会话已失效' }).catch(() => {});
+        return;
+      }
+      const botUserId = session.botUser.id;
+      if (action === 'like') {
+        await addLike(botUserId, resourceId);
+      } else {
+        await removeLike(botUserId, resourceId);
+      }
+      await ctx.answerCallbackQuery().catch(() => {});
+
+      // 扫当前 inline_keyboard,把对应 like/unlike 按钮的文字 + callback_data 互换
+      const oldRm = ctx.callbackQuery?.message?.reply_markup as any;
+      if (oldRm?.inline_keyboard) {
+        const oldData = `${action}:${sessionId}:${resourceId}`;
+        const newAction = action === 'like' ? 'unlike' : 'like';
+        const newData = `${newAction}:${sessionId}:${resourceId}`;
+        const newText = action === 'like' ? '❌ 取消点赞' : '👍 点赞';
+        const newInline = oldRm.inline_keyboard.map((row: any[]) =>
+          row.map((btn: any) => {
+            if (btn.callback_data === oldData) {
+              return { text: newText, callback_data: newData };
+            }
+            return btn;
+          }),
+        );
+        await ctx
+          .editMessageReplyMarkup({ reply_markup: { inline_keyboard: newInline } })
+          .catch(() => {});
+      }
+    } catch (err: any) {
+      console.error('[callback] like/unlike 处理失败:', err.message);
+      await ctx.answerCallbackQuery({ text: '操作失败,请重试' }).catch(() => {});
     }
     return;
   }
@@ -406,11 +456,16 @@ async function processNextPage(
   const isLast = nextIndex >= totalContent - 1;
 
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+  const liked = await isLiked(botUser.id, binding.resource.id);
+  const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
+
+  // 搜索路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
+  const isSearchMode = session.mode === 'search';
 
   if (isLast) {
     // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮 / 收藏
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -430,8 +485,8 @@ async function processNextPage(
   } else {
     // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const searchMoreUrl = await getSearchMoreUrl();
-    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId));
+    const searchMoreUrl = isSearchMode ? undefined : await getSearchMoreUrl();
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -506,13 +561,16 @@ async function processReveal(
   const isLast = currentIndex >= totalContent - 1;
   const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+  const liked = await isLiked(session.botUser.id, binding.resource.id);
+  const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
+  const isSearchMode = session.mode === 'search';
 
   let newKeyboard;
   if (isLast) {
-    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo, getGlobalButtons(_botId));
+    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo, getGlobalButtons(_botId), likeInfo);
   } else {
-    const searchMoreUrl = await getSearchMoreUrl();
-    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo, getGlobalButtons(_botId));
+    const searchMoreUrl = isSearchMode ? undefined : await getSearchMoreUrl();
+    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo, getGlobalButtons(_botId), likeInfo);
   }
 
   if (newKeyboard) {

@@ -4,6 +4,7 @@ import { upsertBotUser, resetSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl, getWelcomeText } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard, buildHomeReplyKeyboard } from '../services/sender';
 import { getGlobalButtons } from '../services/bot-global-buttons';
+import { isLiked } from '../services/resource-like';
 
 /**
  * 处理 /start 命令
@@ -56,7 +57,7 @@ export async function handleStart(ctx: Context, botId: number) {
   }
 
   // 发送第一条资源
-  await sendFirstResource(ctx, botId, inviteLink.id, session.id, contentBindings);
+  await sendFirstResource(ctx, botId, inviteLink.id, session.id, botUser.id, contentBindings);
 }
 
 /**
@@ -67,6 +68,7 @@ async function sendFirstResource(
   botId: number,
   inviteLinkId: number,
   sessionId: number,
+  botUserId: number,
   contentBindings: Awaited<ReturnType<typeof loadContentBindings>>,
 ) {
   const binding = contentBindings[0];
@@ -84,6 +86,8 @@ async function sendFirstResource(
   const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
 
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
+  const liked = await isLiked(botUserId, binding.resource.id);
+  const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
 
   const mediaCounts = {
     total: allMediaFiles.length,
@@ -93,7 +97,7 @@ async function sendFirstResource(
 
   // 如果只有一条资源，发完即结束
   if (totalContent <= 1) {
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -108,7 +112,7 @@ async function sendFirstResource(
 
   // 多条资源，带翻页按钮
   const searchMoreUrl = await getSearchMoreUrl();
-  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId));
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo);
   try {
     await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
   } catch (err: any) {

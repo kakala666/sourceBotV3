@@ -108,6 +108,7 @@ model Resource {
   adBindings      AdBinding[]
   tags            ResourceTag[]
   favorites       FavoriteResource[]
+  likes           ResourceLike[]
 }
 
 model ResourceTag {
@@ -120,6 +121,19 @@ model ResourceTag {
 
   @@unique([resourceId, tag])
   @@index([tag])
+}
+
+model ResourceLike {
+  id         Int      @id @default(autoincrement())
+  botUserId  Int
+  resourceId Int
+  createdAt  DateTime @default(now())
+
+  botUser  BotUser  @relation(fields: [botUserId], references: [id], onDelete: Cascade)
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@unique([botUserId, resourceId])
+  @@index([resourceId])
 }
 
 model FavoriteResource {
@@ -209,6 +223,7 @@ model BotUser {
   inviteLink InviteLink   @relation(fields: [inviteLinkId], references: [id], onDelete: Cascade)
   sessions   UserSession[]
   favorites  FavoriteResource[]
+  likes      ResourceLike[]
 
   @@unique([telegramId, botId])
 }
