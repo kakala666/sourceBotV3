@@ -7,6 +7,7 @@ import { handleAutoReply } from '../handlers/auto-reply';
 import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
+import { reloadGlobalButtons } from '../services/bot-global-buttons';
 import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
 import path from 'path';
@@ -91,6 +92,13 @@ export class BotManager {
       await reloadAllGateConfigs();
     } catch (err: any) {
       console.error('[BotManager] 加载强制订阅配置失败:', err.message);
+    }
+
+    // 刷新 bot 全局按钮缓存
+    try {
+      await reloadGlobalButtons();
+    } catch (err: any) {
+      console.error('[BotManager] 加载全局按钮失败:', err.message);
     }
   }
 

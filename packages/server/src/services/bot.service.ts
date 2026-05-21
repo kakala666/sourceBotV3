@@ -154,4 +154,27 @@ export class BotService {
 
     return json;
   }
+
+  /** 获取 bot 的全局按钮(每条常规资源都会附加) */
+  static async getGlobalButtons(id: number): Promise<{ text: string; url: string }[]> {
+    const bot = await prisma.bot.findUnique({ where: { id }, select: { globalButtons: true } });
+    if (!bot) throw new Error('机器人不存在');
+    const arr = (bot.globalButtons ?? []) as any;
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter((b) => b && typeof b.text === 'string' && typeof b.url === 'string')
+      .map((b) => ({ text: String(b.text).trim(), url: String(b.url).trim() }))
+      .filter((b) => b.text && b.url);
+  }
+
+  /** 覆盖式更新全局按钮;空数组等于清空 */
+  static async setGlobalButtons(id: number, buttons: { text: string; url: string }[]) {
+    if (!Array.isArray(buttons)) throw new Error('buttons 必须是数组');
+    const sanitized = buttons
+      .map((b) => ({ text: String(b?.text ?? '').trim(), url: String(b?.url ?? '').trim() }))
+      .filter((b) => b.text && b.url);
+    if (sanitized.length > 20) throw new Error('全局按钮不能超过 20 个');
+    await prisma.bot.update({ where: { id }, data: { globalButtons: sanitized as any } });
+    return sanitized;
+  }
 }

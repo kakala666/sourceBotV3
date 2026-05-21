@@ -394,23 +394,35 @@ function buildContentKeyboard(
   revealInfo?: { sessionId: number; currentIndex: number } | null,
   searchMoreUrl?: string,
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
+  globalButtons?: { text: string; url: string }[] | null,
 ): InlineKeyboard | undefined {
   // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
   const validContentButtons = (contentButtons ?? []).filter(
     (b) => b && typeof b.text === 'string' && b.text.trim() && typeof b.url === 'string' && b.url.trim(),
   );
+  const validGlobalButtons = (globalButtons ?? []).filter(
+    (b) => b && typeof b.text === 'string' && b.text.trim() && typeof b.url === 'string' && b.url.trim(),
+  );
   const hasContentBtns = validContentButtons.length > 0;
+  const hasGlobalBtns = validGlobalButtons.length > 0;
   const hasPageBtn = sessionId !== undefined && nextIndex !== undefined;
   const hasReveal = !!revealInfo;
   const hasFav = !!favoriteInfo;
 
-  if (!hasContentBtns && !hasPageBtn && !hasReveal && !hasFav) return undefined;
+  if (!hasContentBtns && !hasGlobalBtns && !hasPageBtn && !hasReveal && !hasFav) return undefined;
 
   const keyboard = new InlineKeyboard();
 
   // 内容按钮在上方
   if (hasContentBtns) {
     for (const btn of validContentButtons) {
+      keyboard.url(btn.text.trim(), btn.url.trim()).row();
+    }
+  }
+
+  // bot 全局按钮(放在资源按钮之后, 展开 / 收藏 / 翻页 之前)
+  if (hasGlobalBtns) {
+    for (const btn of validGlobalButtons) {
       keyboard.url(btn.text.trim(), btn.url.trim()).row();
     }
   }

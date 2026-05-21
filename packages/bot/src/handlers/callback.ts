@@ -3,6 +3,7 @@ import prisma from '../prisma';
 import { advanceSession, completeSession, loadSequenceForSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
+import { getGlobalButtons } from '../services/bot-global-buttons';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
@@ -403,7 +404,7 @@ async function processNextPage(
   if (isLast) {
     // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮 / 收藏
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -422,7 +423,7 @@ async function processNextPage(
     // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
     const searchMoreUrl = await getSearchMoreUrl();
-    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo);
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId));
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -500,10 +501,10 @@ async function processReveal(
 
   let newKeyboard;
   if (isLast) {
-    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo);
+    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo, getGlobalButtons(_botId));
   } else {
     const searchMoreUrl = await getSearchMoreUrl();
-    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo);
+    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo, getGlobalButtons(_botId));
   }
 
   if (newKeyboard) {

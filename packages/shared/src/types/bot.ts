@@ -61,3 +61,12 @@ export interface ResourceRegisterInput {
   groupId?: number;
   files: ResourceRegisterFile[];
 }
+
+export interface GlobalButton {
+  text: string;
+  url: string;
+}
+
+export interface BotGlobalButtonsInput {
+  buttons: GlobalButton[];
+}

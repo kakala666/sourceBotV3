@@ -24,6 +24,9 @@ model Bot {
   name      String
   username  String?
   isActive  Boolean  @default(true)
+  // 全局 URL 按钮:在每条常规资源(链接派发/随便看看/收藏列表)的内容键盘里追加,
+  // 位置在资源自己的 URL 按钮之后、「🔽 展开更多」之前。结构 [{text, url}, ...]
+  globalButtons Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

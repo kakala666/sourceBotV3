@@ -3,6 +3,7 @@ import prisma from '../prisma';
 import { upsertBotUser, resetSession } from '../services/session';
 import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent, getSearchMoreUrl, getWelcomeText } from '../services/content';
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard, buildHomeReplyKeyboard } from '../services/sender';
+import { getGlobalButtons } from '../services/bot-global-buttons';
 
 /**
  * 处理 /start 命令
@@ -92,7 +93,7 @@ async function sendFirstResource(
 
   // 如果只有一条资源，发完即结束
   if (totalContent <= 1) {
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -107,7 +108,7 @@ async function sendFirstResource(
 
   // 多条资源，带翻页按钮
   const searchMoreUrl = await getSearchMoreUrl();
-  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl, favoriteInfo);
+  const keyboard = buildContentKeyboard(contentButtons, sessionId, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId));
   try {
     await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
   } catch (err: any) {

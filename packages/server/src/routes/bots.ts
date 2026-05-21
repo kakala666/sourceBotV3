@@ -69,6 +69,30 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
+router.get('/:id/global-buttons', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const buttons = await BotService.getGlobalButtons(id);
+    return success(res, { buttons });
+  } catch (err: any) {
+    return fail(res, err.message, 500);
+  }
+});
+
+router.put('/:id/global-buttons', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { buttons } = req.body ?? {};
+    if (!Array.isArray(buttons)) return fail(res, 'buttons 必须是数组', 400);
+    const saved = await BotService.setGlobalButtons(id, buttons);
+    // 通知 bot-runner 刷新缓存
+    try { (await import('../services/bot-reload-signal')).touchReloadSignal(); } catch { /* ignore */ }
+    return success(res, { buttons: saved });
+  } catch (err: any) {
+    return fail(res, err.message, 400);
+  }
+});
+
 router.post('/:id/verify', async (req, res) => {
   try {
     const id = parseInt(req.params.id);

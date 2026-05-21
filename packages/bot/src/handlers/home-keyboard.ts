@@ -2,6 +2,7 @@ import type { Context } from 'grammy';
 import prisma from '../prisma';
 import { resetSession } from '../services/session';
 import { sendResource, buildContentKeyboard } from '../services/sender';
+import { getGlobalButtons } from '../services/bot-global-buttons';
 import { pickRandomContentResource } from '../services/random-resource';
 import { loadFavoriteList } from '../services/favorite-list';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
@@ -52,7 +53,7 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
     hidden: allMediaFiles.length - visibleMediaFiles.length,
   };
 
-  const keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo);
+  const keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
   try {
     await sendResource(ctx, botId, filteredResource as any, keyboard, resource.id, mediaCounts);
   } catch (err: any) {
@@ -109,9 +110,9 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   let keyboard;
   if (favorites.length > 1) {
     const searchMoreUrl = await getSearchMoreUrl();
-    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, searchMoreUrl, favoriteInfo);
+    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId));
   } else {
-    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo);
+    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId));
   }
 
   try {

@@ -3,11 +3,11 @@ import {
   Table, Button, Modal, Form, Input, Switch, Space, message, Popconfirm, Typography, Select, Alert, Tag,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined, CopyOutlined, SyncOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined, CopyOutlined, SyncOutlined, AppstoreAddOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import type { BotInfo, BotCreateInput, BotAutoSyncConfigInfo, ApiResponse } from 'shared';
+import type { BotInfo, BotCreateInput, BotAutoSyncConfigInfo, GlobalButton, ApiResponse } from 'shared';
 import api from '@/services/api';
 import SubscriptionGateDrawer from '@/components/SubscriptionGateDrawer';
 
@@ -32,7 +32,48 @@ export default function Bots() {
   const [autoSyncLoading, setAutoSyncLoading] = useState(false);
   const [autoSyncSaving, setAutoSyncSaving] = useState(false);
   const [autoSyncRunning, setAutoSyncRunning] = useState(false);
+  const [gbModalOpen, setGbModalOpen] = useState(false);
+  const [gbTarget, setGbTarget] = useState<BotInfo | null>(null);
+  const [gbButtons, setGbButtons] = useState<GlobalButton[]>([]);
+  const [gbLoading, setGbLoading] = useState(false);
+  const [gbSaving, setGbSaving] = useState(false);
   const navigate = useNavigate();
+
+  const openGlobalButtons = async (bot: BotInfo) => {
+    setGbTarget(bot);
+    setGbModalOpen(true);
+    setGbLoading(true);
+    setGbButtons([]);
+    try {
+      const { data } = await api.get<ApiResponse<{ buttons: GlobalButton[] }>>(`/bots/${bot.id}/global-buttons`);
+      setGbButtons(data.data?.buttons || []);
+    } catch {
+      message.error('获取全局按钮失败');
+    } finally {
+      setGbLoading(false);
+    }
+  };
+
+  const saveGlobalButtons = async () => {
+    if (!gbTarget) return;
+    const sanitized = gbButtons
+      .map(b => ({ text: (b.text || '').trim(), url: (b.url || '').trim() }))
+      .filter(b => b.text && b.url);
+    setGbSaving(true);
+    try {
+      const { data } = await api.put<ApiResponse<{ buttons: GlobalButton[] }>>(
+        `/bots/${gbTarget.id}/global-buttons`,
+        { buttons: sanitized },
+      );
+      setGbButtons(data.data?.buttons || []);
+      message.success('已保存');
+      setGbModalOpen(false);
+    } catch (err: any) {
+      message.error(err.response?.data?.message || '保存失败');
+    } finally {
+      setGbSaving(false);
+    }
+  };
 
   const fetchBots = useCallback(async () => {
     setLoading(true);
@@ -237,6 +278,13 @@ export default function Bots() {
             title="自动同步"
             onClick={() => openAutoSync(record)}
           />
+          <Button
+            size="small"
+            type="text"
+            icon={<AppstoreAddOutlined />}
+            title="全局按钮"
+            onClick={() => openGlobalButtons(record)}
+          />
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
             编辑
           </Button>
@@ -353,6 +401,64 @@ export default function Bots() {
         onSave={handleAutoSyncSave}
         onRunNow={handleAutoSyncRunNow}
       />
+
+      <Modal
+        title={gbTarget ? `全局按钮 - ${gbTarget.name}` : '全局按钮'}
+        open={gbModalOpen}
+        onCancel={() => setGbModalOpen(false)}
+        onOk={saveGlobalButtons}
+        okText="保存"
+        confirmLoading={gbSaving}
+        destroyOnHidden
+        width={560}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="所配按钮会自动附加在该机器人所有常规资源消息上(位置:资源自己按钮下方、展开/收藏/翻页之上)。"
+        />
+        {gbLoading ? <Typography.Text type="secondary">加载中...</Typography.Text> : (
+          <Space direction="vertical" style={{ width: '100%' }} size={6}>
+            {gbButtons.map((b, i) => (
+              <Space.Compact key={i} style={{ width: '100%' }}>
+                <Input
+                  placeholder="按钮文字"
+                  value={b.text}
+                  onChange={(e) => {
+                    const next = [...gbButtons];
+                    next[i] = { ...b, text: e.target.value };
+                    setGbButtons(next);
+                  }}
+                  style={{ width: '40%' }}
+                />
+                <Input
+                  placeholder="https://..."
+                  value={b.url}
+                  onChange={(e) => {
+                    const next = [...gbButtons];
+                    next[i] = { ...b, url: e.target.value };
+                    setGbButtons(next);
+                  }}
+                />
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => setGbButtons(gbButtons.filter((_, idx) => idx !== i))}
+                />
+              </Space.Compact>
+            ))}
+            <Button
+              icon={<PlusOutlined />}
+              onClick={() => setGbButtons([...gbButtons, { text: '', url: '' }])}
+              disabled={gbButtons.length >= 20}
+              block
+            >
+              添加按钮 {gbButtons.length >= 20 && '(已达 20 上限)'}
+            </Button>
+          </Space>
+        )}
+      </Modal>
     </>
   );
 }
