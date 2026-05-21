@@ -6,6 +6,7 @@ import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
 import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
 import { handleSearchEntry, handleSearchQuery } from '../handlers/search';
+import { handleHotBrowse } from '../handlers/hot';
 import { consumePending } from '../services/search-pending';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
@@ -234,6 +235,18 @@ export class BotManager {
       }
       handleFavoriteBrowse(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] favorite 处理失败:`, err.message);
+      });
+    });
+
+    // 常驻键盘按钮:🔥 热搜
+    bot.hears('🔥 热搜', (ctx) => {
+      const tgId = ctx.from?.id;
+      if (tgId && shouldThrottle(botId, tgId)) {
+        sendThrottledNotice(ctx, botId, tgId);
+        return;
+      }
+      handleHotBrowse(ctx, botId).catch((err: any) => {
+        console.error(`[Bot ${botId}] hot 处理失败:`, err.message);
       });
     });
 

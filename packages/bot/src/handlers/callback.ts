@@ -372,8 +372,8 @@ async function processNextPage(
   trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
-  // search / share 模式跳过主频道,只查赞助商(用户没绑定特定 link)
-  const skipPrimary = session.mode === 'search' || session.mode === 'share';
+  // search / share / hot 模式跳过主频道,只查赞助商(用户没绑定特定 link)
+  const skipPrimary = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
   const gateResult = await ensureSubscribed(
     botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
     { skipPrimary },
@@ -400,6 +400,8 @@ async function processNextPage(
       await ctx.reply('搜索结果浏览完毕 🔍');
     } else if (session.mode === 'share') {
       await ctx.reply('分享内容浏览完毕 🔗');
+    } else if (session.mode === 'hot') {
+      await ctx.reply('热搜榜浏览完毕 🔥');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);
@@ -464,7 +466,7 @@ async function processNextPage(
   const shareInfo = { botId, resourceId: binding.resource.id };
 
   // 搜索/分享路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
-  const isSearchMode = session.mode === 'search' || session.mode === 'share';
+  const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
 
   if (isLast) {
     // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮 / 收藏
@@ -484,6 +486,8 @@ async function processNextPage(
       await ctx.reply('搜索结果浏览完毕 🔍');
     } else if (session.mode === 'share') {
       await ctx.reply('分享内容浏览完毕 🔗');
+    } else if (session.mode === 'hot') {
+      await ctx.reply('热搜榜浏览完毕 🔥');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);
@@ -570,7 +574,7 @@ async function processReveal(
   const liked = await isLiked(session.botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
   const shareInfo = { botId: _botId, resourceId: binding.resource.id };
-  const isSearchMode = session.mode === 'search' || session.mode === 'share';
+  const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
 
   let newKeyboard;
   if (isLast) {
