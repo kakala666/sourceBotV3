@@ -372,10 +372,11 @@ async function processNextPage(
   trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
-  // search 模式跳过主频道,只查赞助商
+  // search / share 模式跳过主频道,只查赞助商(用户没绑定特定 link)
+  const skipPrimary = session.mode === 'search' || session.mode === 'share';
   const gateResult = await ensureSubscribed(
     botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
-    { skipPrimary: session.mode === 'search' },
+    { skipPrimary },
   );
   if (!gateResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
@@ -397,6 +398,8 @@ async function processNextPage(
       await ctx.reply('你的收藏全部看完了 🎯');
     } else if (session.mode === 'search') {
       await ctx.reply('搜索结果浏览完毕 🔍');
+    } else if (session.mode === 'share') {
+      await ctx.reply('分享内容浏览完毕 🔗');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);
@@ -458,14 +461,15 @@ async function processNextPage(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
+  const shareInfo = { botId, resourceId: binding.resource.id };
 
-  // 搜索路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
-  const isSearchMode = session.mode === 'search';
+  // 搜索/分享路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
+  const isSearchMode = session.mode === 'search' || session.mode === 'share';
 
   if (isLast) {
     // 最后一条资源，不带翻页按钮，但可能有内容按钮 / 展开更多按钮 / 收藏
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
-    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    const keyboard = buildContentKeyboard(contentButtons, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -478,6 +482,8 @@ async function processNextPage(
       await ctx.reply('你的收藏全部看完了 🎯');
     } else if (session.mode === 'search') {
       await ctx.reply('搜索结果浏览完毕 🔍');
+    } else if (session.mode === 'share') {
+      await ctx.reply('分享内容浏览完毕 🔗');
     } else {
       const endContent = await getEndContent();
       await sendEndContent(ctx, endContent);
@@ -486,7 +492,7 @@ async function processNextPage(
     // 还有更多资源，带翻页按钮(可能也带展开更多)
     const contentButtons = (binding as any).buttons as { text: string; url: string }[] | null;
     const searchMoreUrl = isSearchMode ? undefined : await getSearchMoreUrl();
-    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    const keyboard = buildContentKeyboard(contentButtons, sessionId, nextIndex + 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
     try {
       await sendResource(ctx, botId, filteredResource, keyboard, binding.resource.id, mediaCounts);
     } catch (err: any) {
@@ -563,14 +569,15 @@ async function processReveal(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(session.botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const isSearchMode = session.mode === 'search';
+  const shareInfo = { botId: _botId, resourceId: binding.resource.id };
+  const isSearchMode = session.mode === 'search' || session.mode === 'share';
 
   let newKeyboard;
   if (isLast) {
-    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo, getGlobalButtons(_botId), likeInfo);
+    newKeyboard = buildContentKeyboard(contentButtons, undefined, undefined, null, undefined, favoriteInfo, getGlobalButtons(_botId), likeInfo, shareInfo);
   } else {
     const searchMoreUrl = isSearchMode ? undefined : await getSearchMoreUrl();
-    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo, getGlobalButtons(_botId), likeInfo);
+    newKeyboard = buildContentKeyboard(contentButtons, sessionId, currentIndex + 1, null, searchMoreUrl, favoriteInfo, getGlobalButtons(_botId), likeInfo, shareInfo);
   }
 
   if (newKeyboard) {

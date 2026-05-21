@@ -99,6 +99,8 @@ model Resource {
   groupId   Int?
   type      String
   caption   String?
+  // 资源被发送给用户的累计次数,用于「分享」入口的排序;每次 sendResource 异步 +1
+  viewCount Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

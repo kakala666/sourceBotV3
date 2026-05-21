@@ -50,13 +50,14 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
   const favoriteInfo = { sessionId: session.id, resourceId: resource.id };
   const liked = await isLiked(botUser.id, resource.id);
   const likeInfo = { sessionId: session.id, resourceId: resource.id, liked };
+  const shareInfo = { botId, resourceId: resource.id };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
     hidden: allMediaFiles.length - visibleMediaFiles.length,
   };
 
-  const keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
+  const keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
   try {
     await sendResource(ctx, botId, filteredResource as any, keyboard, resource.id, mediaCounts);
   } catch (err: any) {
@@ -106,6 +107,7 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   const favoriteInfo = { sessionId: session.id, resourceId: first.resource.id };
   const liked = await isLiked(botUser.id, first.resource.id);
   const likeInfo = { sessionId: session.id, resourceId: first.resource.id, liked };
+  const shareInfo = { botId, resourceId: first.resource.id };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
@@ -115,9 +117,9 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   let keyboard;
   if (favorites.length > 1) {
     const searchMoreUrl = await getSearchMoreUrl();
-    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, searchMoreUrl, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
   } else {
-    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
   }
 
   try {

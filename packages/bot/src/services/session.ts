@@ -40,7 +40,7 @@ export async function upsertBotUser(
  */
 export async function resetSession(
   botUserId: number,
-  options?: { mode?: 'link' | 'favorite' | 'single' | 'search'; payload?: any },
+  options?: { mode?: 'link' | 'favorite' | 'single' | 'search' | 'share'; payload?: any },
 ) {
   // 将该用户所有未完成会话标记为已完成
   await prisma.userSession.updateMany({
@@ -124,7 +124,7 @@ export async function loadSequenceForSession(session: {
     });
     return r ? [{ resource: r as any, buttons: null, sortOrder: 0 }] : [];
   }
-  if (session.mode === 'search') {
+  if (session.mode === 'search' || session.mode === 'share') {
     const ids: number[] = session.payload?.resourceIds ?? [];
     if (ids.length === 0) return [];
     const list = await prisma.resource.findMany({

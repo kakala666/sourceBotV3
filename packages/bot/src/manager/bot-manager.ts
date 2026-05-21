@@ -10,6 +10,7 @@ import { consumePending } from '../services/search-pending';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { reloadAllGateConfigs } from '../services/subscription-check';
 import { reloadGlobalButtons } from '../services/bot-global-buttons';
+import { reloadBotMeta } from '../services/bot-meta';
 import { protectContentTransformer } from '../services/protect-content';
 import { handleChannelPost } from '../services/channel-collector';
 import fs from 'fs';
@@ -102,6 +103,13 @@ export class BotManager {
       await reloadGlobalButtons();
     } catch (err: any) {
       console.error('[BotManager] 加载全局按钮失败:', err.message);
+    }
+
+    // 刷新 bot 元数据缓存(username 等,供分享按钮 deep link 用)
+    try {
+      await reloadBotMeta();
+    } catch (err: any) {
+      console.error('[BotManager] 加载 bot 元数据失败:', err.message);
     }
   }
 

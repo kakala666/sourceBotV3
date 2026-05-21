@@ -74,6 +74,7 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   const favoriteInfo = { sessionId: session.id, resourceId: first.id };
   const liked = await isLiked(botUser.id, first.id);
   const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
+  const shareInfo = { botId, resourceId: first.id };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
@@ -85,9 +86,9 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   // 搜索路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
   let keyboard;
   if (ids.length > 1) {
-    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
   } else {
-    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo);
+    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
   }
 
   try {

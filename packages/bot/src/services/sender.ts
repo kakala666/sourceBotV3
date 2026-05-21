@@ -3,6 +3,7 @@ import type { Context } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
 import { isS3Path, parseS3Key, downloadToTmp, cleanupTmp } from './storage';
+import { getBotUsername } from './bot-meta';
 
 /** 上传文件的根目录，优先使用环境变量，否则从 cwd 推断 */
 const UPLOADS_ROOT = process.env.UPLOAD_DIR
@@ -396,6 +397,7 @@ function buildContentKeyboard(
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
   globalButtons?: { text: string; url: string }[] | null,
   likeInfo?: { sessionId: number; resourceId: number; liked: boolean } | null,
+  shareInfo?: { botId: number; resourceId: number } | null,
 ): InlineKeyboard | undefined {
   // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
   const validContentButtons = (contentButtons ?? []).filter(
@@ -410,8 +412,11 @@ function buildContentKeyboard(
   const hasReveal = !!revealInfo;
   const hasFav = !!favoriteInfo;
   const hasLike = !!likeInfo;
+  // 分享按钮:只在 bot.username 已配置时才能造 deep link
+  const shareUsername = shareInfo ? getBotUsername(shareInfo.botId) : null;
+  const hasShare = !!(shareInfo && shareUsername);
 
-  if (!hasContentBtns && !hasGlobalBtns && !hasPageBtn && !hasReveal && !hasFav && !hasLike) return undefined;
+  if (!hasContentBtns && !hasGlobalBtns && !hasPageBtn && !hasReveal && !hasFav && !hasLike && !hasShare) return undefined;
 
   const keyboard = new InlineKeyboard();
 
@@ -455,6 +460,14 @@ function buildContentKeyboard(
   // 翻页按钮
   if (hasPageBtn) {
     keyboard.text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
+    if (hasShare) keyboard.row();
+  }
+
+  // 「🔗 分享」放最末行:点击弹出 Telegram 原生「分享到」对话框,转发 deep link 给联系人
+  if (hasShare) {
+    const deepLink = `https://t.me/${shareUsername}?start=share_${shareInfo!.resourceId}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent('点击查看这条资源')}`;
+    keyboard.url('🔗 分享', shareUrl);
   }
 
   return keyboard;
@@ -481,6 +494,13 @@ export async function sendResource(
   const caption = resourceId !== undefined
     ? (resource.caption ? `资源${resourceId}\n${resource.caption}` : `资源${resourceId}`)
     : resource.caption;
+
+  // 「观看量」累加(异步 fire-and-forget):仅在指定了 resourceId 时记一次,排除 reveal 重发
+  if (resourceId !== undefined) {
+    prisma.resource
+      .update({ where: { id: resourceId }, data: { viewCount: { increment: 1 } } })
+      .catch((e: any) => console.error('[view] +1 failed:', e.message));
+  }
 
   if (!mediaFiles.length) {
     // 无媒体文件，仅发送文字
