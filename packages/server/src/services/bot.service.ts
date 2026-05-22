@@ -13,7 +13,28 @@ export class BotService {
   }
 
   static async update(id: number, data: BotUpdateInput) {
-    return prisma.bot.update({ where: { id }, data });
+    // 白名单 — 只放允许的字段过去,避免客户端意外写入未授权字段
+    const patch: Partial<BotUpdateInput> = {};
+    if (data.token !== undefined) patch.token = data.token;
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.isActive !== undefined) patch.isActive = data.isActive;
+
+    if (data.defaultInviteLinkId !== undefined) {
+      if (data.defaultInviteLinkId === null) {
+        patch.defaultInviteLinkId = null;
+      } else {
+        // 校验:目标 InviteLink 必须属于本 bot,避免跨 bot 串号
+        const link = await prisma.inviteLink.findUnique({
+          where: { id: data.defaultInviteLinkId },
+          select: { botId: true },
+        });
+        if (!link) throw new Error('指定的链接不存在');
+        if (link.botId !== id) throw new Error('该链接不属于此机器人');
+        patch.defaultInviteLinkId = data.defaultInviteLinkId;
+      }
+    }
+
+    return prisma.bot.update({ where: { id }, data: patch as any });
   }
 
   static async delete(id: number) {

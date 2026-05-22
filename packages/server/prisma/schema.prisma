@@ -27,10 +27,15 @@ model Bot {
   // 全局 URL 按钮:在每条常规资源(链接派发/随便看看/收藏列表)的内容键盘里追加,
   // 位置在资源自己的 URL 按钮之后、「🔽 展开更多」之前。结构 [{text, url}, ...]
   globalButtons Json?
+  // 无参数 /start 默认走的资源列表(指向本 bot 名下某条 InviteLink)。
+  // null = 关闭(仅回欢迎+键盘);非 null = 把空 /start 当成对应 link 的入口,
+  // 沿用该 link 的 ContentBinding / AdBinding / SubscriptionGate / BotUser 统计。
+  defaultInviteLinkId Int?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   inviteLinks      InviteLink[]
+  defaultInviteLink InviteLink? @relation("BotDefaultInvite", fields: [defaultInviteLinkId], references: [id], onDelete: SetNull)
   fileIds          BotFileId[]
   botUsers         BotUser[]
   channelGroups    ResourceGroup[]      @relation("ChannelGroupSourceBot")
@@ -75,6 +80,8 @@ model InviteLink {
   adBindings       AdBinding[]
   botUsers         BotUser[]
   subscriptionGate SubscriptionGate?
+  // 反向关系:被哪些 bot 选为"无参数 /start 默认资源列表"
+  defaultedByBots  Bot[]             @relation("BotDefaultInvite")
 
   @@unique([botId, code])
 }

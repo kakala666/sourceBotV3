@@ -3,11 +3,11 @@ import {
   Table, Button, Modal, Form, Input, Switch, Space, message, Popconfirm, Typography, Select, Alert, Tag,
 } from 'antd';
 import {
-  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined, CopyOutlined, SyncOutlined, AppstoreAddOutlined,
+  PlusOutlined, EditOutlined, DeleteOutlined, SafetyCertificateOutlined, LinkOutlined, LockOutlined, CopyOutlined, SyncOutlined, AppstoreAddOutlined, HomeOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
-import type { BotInfo, BotCreateInput, BotAutoSyncConfigInfo, GlobalButton, ApiResponse } from 'shared';
+import type { BotInfo, BotCreateInput, BotAutoSyncConfigInfo, GlobalButton, InviteLinkInfo, ApiResponse } from 'shared';
 import api from '@/services/api';
 import SubscriptionGateDrawer from '@/components/SubscriptionGateDrawer';
 
@@ -37,6 +37,13 @@ export default function Bots() {
   const [gbButtons, setGbButtons] = useState<GlobalButton[]>([]);
   const [gbLoading, setGbLoading] = useState(false);
   const [gbSaving, setGbSaving] = useState(false);
+  // 无参数 /start 默认资源列表
+  const [defaultModalOpen, setDefaultModalOpen] = useState(false);
+  const [defaultTarget, setDefaultTarget] = useState<BotInfo | null>(null);
+  const [defaultLinks, setDefaultLinks] = useState<InviteLinkInfo[]>([]);
+  const [defaultValue, setDefaultValue] = useState<number | null>(null);
+  const [defaultLoading, setDefaultLoading] = useState(false);
+  const [defaultSaving, setDefaultSaving] = useState(false);
   const navigate = useNavigate();
 
   const openGlobalButtons = async (bot: BotInfo) => {
@@ -51,6 +58,37 @@ export default function Bots() {
       message.error('获取全局按钮失败');
     } finally {
       setGbLoading(false);
+    }
+  };
+
+  const openDefault = async (bot: BotInfo) => {
+    setDefaultTarget(bot);
+    setDefaultValue(bot.defaultInviteLinkId ?? null);
+    setDefaultModalOpen(true);
+    setDefaultLoading(true);
+    setDefaultLinks([]);
+    try {
+      const { data } = await api.get<ApiResponse<InviteLinkInfo[]>>(`/bots/${bot.id}/links`);
+      setDefaultLinks(data.data || []);
+    } catch {
+      message.error('获取链接列表失败');
+    } finally {
+      setDefaultLoading(false);
+    }
+  };
+
+  const saveDefault = async () => {
+    if (!defaultTarget) return;
+    setDefaultSaving(true);
+    try {
+      await api.put(`/bots/${defaultTarget.id}`, { defaultInviteLinkId: defaultValue });
+      message.success(defaultValue == null ? '已关闭' : '已启用');
+      setDefaultModalOpen(false);
+      fetchBots();
+    } catch (err: any) {
+      message.error(err.response?.data?.message || '保存失败');
+    } finally {
+      setDefaultSaving(false);
     }
   };
 
@@ -285,6 +323,13 @@ export default function Bots() {
             title="全局按钮"
             onClick={() => openGlobalButtons(record)}
           />
+          <Button
+            size="small"
+            type="text"
+            icon={<HomeOutlined />}
+            title="无参数 /start 默认资源列表"
+            onClick={() => openDefault(record)}
+          />
           <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(record)}>
             编辑
           </Button>
@@ -401,6 +446,46 @@ export default function Bots() {
         onSave={handleAutoSyncSave}
         onRunNow={handleAutoSyncRunNow}
       />
+
+      <Modal
+        title={defaultTarget ? `无参数 /start 默认资源列表 - ${defaultTarget.name}` : '默认资源列表'}
+        open={defaultModalOpen}
+        onCancel={() => setDefaultModalOpen(false)}
+        onOk={saveDefault}
+        okText="保存"
+        confirmLoading={defaultSaving}
+        destroyOnHidden
+        width={560}
+      >
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 12 }}
+          message="设置后,用户直接发 /start(不带邀请参数)等同于通过该链接进入"
+          description="内容绑定 / 广告 / 强制订阅 / 用户统计全部沿用该链接的配置。留空 = 关闭(仅回欢迎语+键盘)。"
+        />
+        {defaultLoading ? (
+          <Typography.Text type="secondary">加载中...</Typography.Text>
+        ) : (
+          <Form layout="vertical">
+            <Form.Item label="默认链接">
+              <Select
+                placeholder="关闭(留空)"
+                allowClear
+                value={defaultValue ?? undefined}
+                onChange={(v) => setDefaultValue(v ?? null)}
+                options={defaultLinks.map((l) => ({
+                  label: `${l.name} (code: ${l.code})`,
+                  value: l.id,
+                }))}
+                showSearch
+                optionFilterProp="label"
+                notFoundContent={defaultLinks.length === 0 ? '该机器人还没有任何链接' : undefined}
+              />
+            </Form.Item>
+          </Form>
+        )}
+      </Modal>
 
       <Modal
         title={gbTarget ? `全局按钮 - ${gbTarget.name}` : '全局按钮'}

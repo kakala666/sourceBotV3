@@ -5,6 +5,8 @@ export interface BotInfo {
   name: string;
   username: string | null;
   isActive: boolean;
+  /** 无参数 /start 默认走的资源列表 InviteLink.id;null = 关闭 */
+  defaultInviteLinkId: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -18,6 +20,8 @@ export interface BotUpdateInput {
   token?: string;
   name?: string;
   isActive?: boolean;
+  /** 设为某 InviteLink.id 启用;设为 null 关闭。该 link 必须属于本 bot */
+  defaultInviteLinkId?: number | null;
 }
 
 /** 每天 0 点定时同步:从 targetBot 同名链接拉 ContentBinding 覆盖本 bot 同名链接 */

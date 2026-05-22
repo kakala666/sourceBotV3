@@ -14,18 +14,35 @@ import { HOT_KEYWORDS } from './hot';
  * 用户通过 t.me/botname?start=abc123 进入
  */
 export async function handleStart(ctx: Context, botId: number) {
-  const payload = (ctx as any).match as string | undefined;
+  let payload = (ctx as any).match as string | undefined;
+  let cameFromDefaultLink = false;
 
-  // 无 payload → 当作"主菜单/键盘刷新"入口,发欢迎文案 + 最新 reply keyboard
-  // 用户可以随时发 /start 显式刷新键盘(键盘改版后老用户能看到新布局)
+  // 无 payload 时:若 bot 配置了"默认资源列表",把对应 InviteLink.code 当 payload
+  // 继续往下走(等同于用户从这条 link 进来 —— 沿用 ContentBinding/AdBinding/
+  // SubscriptionGate/BotUser 统计)。未配置则只刷新欢迎+键盘后早退。
   if (!payload) {
+    // 先发欢迎+键盘:无论是否配 default link,都能在每次 /start 时让老用户看到
+    // 最新版常驻键盘(键盘改版后无需重新点 invite link)。
     const welcome = (await getWelcomeText().catch(() => null)) || '👋 欢迎使用';
     await ctx.reply(welcome, { reply_markup: buildHomeReplyKeyboard() }).catch(() => {});
-    return;
+
+    const botRow = await prisma.bot.findUnique({
+      where: { id: botId },
+      select: { defaultInviteLink: { select: { code: true } } },
+    }).catch(() => null);
+    const defaultCode = botRow?.defaultInviteLink?.code;
+    if (!defaultCode) return;
+    payload = defaultCode;
+    cameFromDefaultLink = true;
+    // 落到下面 inviteLink 查找分支 —— cameFromDefaultLink 标记用于跳过该分支
+    // 的"再发一次欢迎键盘"避免重复打扰用户
   }
 
+  // 此处 payload 一定有值(上面要么 early-return,要么赋了 defaultCode)
+  const pl = payload as string;
+
   // 分享 deep link: /start share_{resourceId}
-  const shareMatch = payload.match(/^share_(\d+)$/);
+  const shareMatch = pl.match(/^share_(\d+)$/);
   if (shareMatch) {
     await handleShareStart(ctx, botId, parseInt(shareMatch[1], 10));
     return;
@@ -35,7 +52,7 @@ export async function handleStart(ctx: Context, botId: number) {
   // 由 🔥 热搜 按钮发出的 [词](t.me/<bot>?start=search_N) 链接触发。
   // 用编号(ASCII-safe)而非 URL-encoded 中文, 因 Telegram start payload
   // 仅允许 [A-Za-z0-9_-]。
-  const searchMatch = payload.match(/^search_(\d+)$/);
+  const searchMatch = pl.match(/^search_(\d+)$/);
   if (searchMatch) {
     const idx = parseInt(searchMatch[1], 10) - 1;
     const keyword = HOT_KEYWORDS[idx];
@@ -47,7 +64,7 @@ export async function handleStart(ctx: Context, botId: number) {
 
   // 查询邀请链接
   const inviteLink = await prisma.inviteLink.findUnique({
-    where: { botId_code: { botId, code: payload } },
+    where: { botId_code: { botId, code: pl } },
   });
 
   // 无效链接 → 不回复
@@ -78,11 +95,14 @@ export async function handleStart(ctx: Context, botId: number) {
   const session = await resetSession(botUser.id);
 
   // 发欢迎文本 + reply keyboard(Telegram 客户端会持续显示)
-  try {
-    const welcomeText = await getWelcomeText();
-    await ctx.reply(welcomeText, { reply_markup: buildHomeReplyKeyboard() });
-  } catch (err: any) {
-    console.error('[start] 发欢迎键盘失败:', err.message);
+  // 走"无参数 default link"分支时上面已经发过一次,此处跳过避免重复
+  if (!cameFromDefaultLink) {
+    try {
+      const welcomeText = await getWelcomeText();
+      await ctx.reply(welcomeText, { reply_markup: buildHomeReplyKeyboard() });
+    } catch (err: any) {
+      console.error('[start] 发欢迎键盘失败:', err.message);
+    }
   }
 
   // 发送第一条资源
