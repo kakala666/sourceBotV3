@@ -586,15 +586,17 @@ export async function sendEndContent(
 }
 
 /**
- * 常驻底部 reply keyboard:2 行 × 2 列
- *   搜索其他资源 / 热搜
- *   随便看看 / 收藏
+ * 常驻底部 reply keyboard:
+ *   行 1: 搜索其他资源 / 热门资源搜索
+ *   行 2: 随便看看 / 收藏
+ *   行 3: 分享机器人给其他朋友 (整行单按钮)
  * 一旦发出,Telegram 客户端持续显示直到 ReplyKeyboardRemove。
  */
 export function buildHomeReplyKeyboard(): Keyboard {
   return new Keyboard()
-    .text('🔍 搜索其他资源').text('🔥 热搜').row()
-    .text('🎲 随便看看').text('⭐ 收藏')
+    .text('🔍 搜索其他资源').text('🔥 热门资源搜索').row()
+    .text('🎲 随便看看').text('⭐ 收藏').row()
+    .text('📤 分享机器人给其他朋友')
     .resized().persistent();
 }
 

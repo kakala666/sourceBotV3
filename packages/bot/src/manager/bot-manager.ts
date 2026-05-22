@@ -6,6 +6,7 @@ import { handleForward } from '../handlers/forward';
 import { handleAutoReply } from '../handlers/auto-reply';
 import { handleRandomBrowse, handleFavoriteBrowse } from '../handlers/home-keyboard';
 import { handleSearchEntry, handleSearchQuery } from '../handlers/search';
+import { handleShareBot } from '../handlers/share-bot';
 import { handleHotBrowse } from '../handlers/hot';
 import { consumePending } from '../services/search-pending';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
@@ -238,8 +239,8 @@ export class BotManager {
       });
     });
 
-    // 常驻键盘按钮:🔥 热搜
-    bot.hears('🔥 热搜', (ctx) => {
+    // 常驻键盘按钮:🔥 热门资源搜索
+    bot.hears('🔥 热门资源搜索', (ctx) => {
       const tgId = ctx.from?.id;
       if (tgId && shouldThrottle(botId, tgId)) {
         sendThrottledNotice(ctx, botId, tgId);
@@ -259,6 +260,18 @@ export class BotManager {
       }
       handleSearchEntry(ctx, botId).catch((err: any) => {
         console.error(`[Bot ${botId}] search entry 处理失败:`, err.message);
+      });
+    });
+
+    // 常驻键盘按钮:📤 分享机器人给其他朋友
+    bot.hears('📤 分享机器人给其他朋友', (ctx) => {
+      const tgId = ctx.from?.id;
+      if (tgId && shouldThrottle(botId, tgId)) {
+        sendThrottledNotice(ctx, botId, tgId);
+        return;
+      }
+      handleShareBot(ctx, botId).catch((err: any) => {
+        console.error(`[Bot ${botId}] share-bot 处理失败:`, err.message);
       });
     });
 
