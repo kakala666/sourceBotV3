@@ -16,8 +16,13 @@ import { HOT_KEYWORDS } from './hot';
 export async function handleStart(ctx: Context, botId: number) {
   const payload = (ctx as any).match as string | undefined;
 
-  // 无参数 → 不回复
-  if (!payload) return;
+  // 无 payload → 当作"主菜单/键盘刷新"入口,发欢迎文案 + 最新 reply keyboard
+  // 用户可以随时发 /start 显式刷新键盘(键盘改版后老用户能看到新布局)
+  if (!payload) {
+    const welcome = (await getWelcomeText().catch(() => null)) || '👋 欢迎使用';
+    await ctx.reply(welcome, { reply_markup: buildHomeReplyKeyboard() }).catch(() => {});
+    return;
+  }
 
   // 分享 deep link: /start share_{resourceId}
   const shareMatch = payload.match(/^share_(\d+)$/);
