@@ -7,6 +7,7 @@ import { getGlobalButtons } from '../services/bot-global-buttons';
 import { isLiked } from '../services/resource-like';
 import { buildShareSequence } from '../services/share-sequence';
 import { handleSearchQuery } from './search';
+import { HOT_KEYWORDS } from './hot';
 
 /**
  * 处理 /start 命令
@@ -25,17 +26,17 @@ export async function handleStart(ctx: Context, botId: number) {
     return;
   }
 
-  // 热搜词 deep link: /start search_{urlEncodedKeyword}
-  // 由 🔥 热搜 按钮发出的 Markdown 链接触发 → 用户点击 → 直接搜索该词
-  const searchMatch = payload.match(/^search_(.+)$/);
+  // 热搜词 deep link: /start search_<1-based-index>
+  // 由 🔥 热搜 按钮发出的 [词](t.me/<bot>?start=search_N) 链接触发。
+  // 用编号(ASCII-safe)而非 URL-encoded 中文, 因 Telegram start payload
+  // 仅允许 [A-Za-z0-9_-]。
+  const searchMatch = payload.match(/^search_(\d+)$/);
   if (searchMatch) {
-    let keyword: string;
-    try {
-      keyword = decodeURIComponent(searchMatch[1]);
-    } catch {
-      keyword = searchMatch[1];
+    const idx = parseInt(searchMatch[1], 10) - 1;
+    const keyword = HOT_KEYWORDS[idx];
+    if (keyword) {
+      await handleSearchQuery(ctx, botId, keyword);
     }
-    await handleSearchQuery(ctx, botId, keyword);
     return;
   }
 
