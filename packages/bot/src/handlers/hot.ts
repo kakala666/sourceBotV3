@@ -1,74 +1,38 @@
 import type { Context } from 'grammy';
-import prisma from '../prisma';
-import { resetSession } from '../services/session';
-import { sendResource, buildContentKeyboard } from '../services/sender';
-import { getGlobalButtons } from '../services/bot-global-buttons';
-import { isLiked } from '../services/resource-like';
-import { buildHotSequence } from '../services/hot-sequence';
+
+/** 热门搜索预设词(完全静态,每排 4 个共 2 排) */
+const HOT_KEYWORDS = [
+  '反差', '母狗', '白虎', '自慰',
+  '少妇', '熟女', '探花', '极品',
+];
 
 /**
- * 🔥 热搜:按观看量降序拉前 100 条 → 创建 mode='hot' session → 发首条 + 翻页
+ * 🔥 热搜:不再动态拉资源列表,改成发一段预设 Markdown 文本。
+ * 每个词是一个 [词](t.me/<bot>?start=search_<词>) deep link。
+ * 用户在 bot chat 内点击 → Telegram 直接发送 /start search_<词> → start.ts
+ * 检测到 search_ 前缀走 handleSearchQuery 执行该词搜索。
  */
 export async function handleHotBrowse(ctx: Context, botId: number) {
-  const from = ctx.from;
-  if (!from) return;
-
-  const botUser = await prisma.botUser.findFirst({
-    where: { telegramId: BigInt(from.id), botId },
-  });
-  if (!botUser) {
-    await ctx.reply('请先通过邀请链接 /start 一次');
+  const username = ctx.me?.username;
+  if (!username) {
+    await ctx.reply('⚠️ bot 用户名获取失败,请联系管理员');
     return;
   }
+  void botId; // 防 unused 警告(签名跟 hears 调用一致)
 
-  const ids = await buildHotSequence();
-  if (ids.length === 0) {
-    await ctx.reply('暂无可用资源');
-    return;
-  }
+  const linkFor = (kw: string) =>
+    `<a href="https://t.me/${username}?start=search_${encodeURIComponent(kw)}">${kw}</a>`;
+  const row1 = HOT_KEYWORDS.slice(0, 4).map(linkFor).join('     ');
+  const row2 = HOT_KEYWORDS.slice(4, 8).map(linkFor).join('     ');
 
-  const session = await resetSession(botUser.id, {
-    mode: 'hot',
-    payload: { resourceIds: ids },
+  const text =
+    `🔥 <b>热门搜索</b>\n` +
+    `点击下方关键词直接搜索:\n\n` +
+    `${row1}\n` +
+    `${row2}`;
+
+  await ctx.reply(text, {
+    parse_mode: 'HTML',
+    link_preview_options: { is_disabled: true },
   });
-
-  const first = await prisma.resource.findUnique({
-    where: { id: ids[0] },
-    include: { mediaFiles: { orderBy: { sortOrder: 'asc' } } },
-  });
-  if (!first) {
-    await ctx.reply('⚠️ 资源加载失败,请稍后重试');
-    return;
-  }
-
-  const allMediaFiles = first.mediaFiles ?? [];
-  const visibleMediaFiles = allMediaFiles.filter((mf: any) => !mf.isHidden);
-  const hasHidden = visibleMediaFiles.length < allMediaFiles.length;
-  const filteredResource = { ...first, mediaFiles: visibleMediaFiles };
-  const revealInfo = hasHidden ? { sessionId: session.id, currentIndex: 0 } : null;
-  const favoriteInfo = { sessionId: session.id, resourceId: first.id };
-  const liked = await isLiked(botUser.id, first.id);
-  const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
-  const shareInfo = { botId, resourceId: first.id };
-  const mediaCounts = {
-    total: allMediaFiles.length,
-    visible: visibleMediaFiles.length,
-    hidden: allMediaFiles.length - visibleMediaFiles.length,
-  };
-
-  await ctx.reply(`🔥 热搜榜共 ${ids.length} 条,开始浏览`);
-
-  let keyboard;
-  if (ids.length > 1) {
-    keyboard = buildContentKeyboard(null, session.id, 1, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
-  } else {
-    keyboard = buildContentKeyboard(null, undefined, undefined, revealInfo, undefined, favoriteInfo, getGlobalButtons(botId), likeInfo, shareInfo);
-  }
-
-  try {
-    await sendResource(ctx, botId, filteredResource as any, keyboard, first.id, mediaCounts);
-  } catch (err: any) {
-    console.error('[hot] 发送失败:', err.message);
-    await ctx.reply('⚠️ 资源加载失败,请稍后重试');
-  }
 }

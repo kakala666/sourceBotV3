@@ -6,6 +6,7 @@ import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKe
 import { getGlobalButtons } from '../services/bot-global-buttons';
 import { isLiked } from '../services/resource-like';
 import { buildShareSequence } from '../services/share-sequence';
+import { handleSearchQuery } from './search';
 
 /**
  * 处理 /start 命令
@@ -21,6 +22,20 @@ export async function handleStart(ctx: Context, botId: number) {
   const shareMatch = payload.match(/^share_(\d+)$/);
   if (shareMatch) {
     await handleShareStart(ctx, botId, parseInt(shareMatch[1], 10));
+    return;
+  }
+
+  // 热搜词 deep link: /start search_{urlEncodedKeyword}
+  // 由 🔥 热搜 按钮发出的 Markdown 链接触发 → 用户点击 → 直接搜索该词
+  const searchMatch = payload.match(/^search_(.+)$/);
+  if (searchMatch) {
+    let keyword: string;
+    try {
+      keyword = decodeURIComponent(searchMatch[1]);
+    } catch {
+      keyword = searchMatch[1];
+    }
+    await handleSearchQuery(ctx, botId, keyword);
     return;
   }
 
