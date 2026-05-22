@@ -42,7 +42,7 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
 
   const trimmed = keyword.trim().slice(0, MAX_KEYWORD_LEN);
   if (!trimmed) {
-    await ctx.reply('关键词不能为空,请重新点 🔍 搜索');
+    await ctx.reply('关键词不能为空,请重新点 🔍 搜索其他资源');
     return;
   }
 

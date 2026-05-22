@@ -587,14 +587,14 @@ export async function sendEndContent(
 
 /**
  * 常驻底部 reply keyboard:2 行 × 2 列
- *   随便看看 / 搜索
- *   热搜 / 我的收藏
+ *   搜索其他资源 / 热搜
+ *   随便看看 / 收藏
  * 一旦发出,Telegram 客户端持续显示直到 ReplyKeyboardRemove。
  */
 export function buildHomeReplyKeyboard(): Keyboard {
   return new Keyboard()
-    .text('🎲 随便看看').text('🔍 搜索').row()
-    .text('🔥 热搜').text('⭐ 我的收藏')
+    .text('🔍 搜索其他资源').text('🔥 热搜').row()
+    .text('🎲 随便看看').text('⭐ 收藏')
     .resized().persistent();
 }
 

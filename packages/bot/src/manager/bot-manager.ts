@@ -226,8 +226,8 @@ export class BotManager {
       });
     });
 
-    // 常驻键盘按钮:⭐ 我的收藏
-    bot.hears('⭐ 我的收藏', (ctx) => {
+    // 常驻键盘按钮:⭐ 收藏
+    bot.hears('⭐ 收藏', (ctx) => {
       const tgId = ctx.from?.id;
       if (tgId && shouldThrottle(botId, tgId)) {
         sendThrottledNotice(ctx, botId, tgId);
@@ -250,8 +250,8 @@ export class BotManager {
       });
     });
 
-    // 常驻键盘按钮:🔍 搜索
-    bot.hears('🔍 搜索', (ctx) => {
+    // 常驻键盘按钮:🔍 搜索其他资源
+    bot.hears('🔍 搜索其他资源', (ctx) => {
       const tgId = ctx.from?.id;
       if (tgId && shouldThrottle(botId, tgId)) {
         sendThrottledNotice(ctx, botId, tgId);
