@@ -1,4 +1,18 @@
 import { InputFile, InputMediaBuilder, InlineKeyboard, Keyboard } from 'grammy';
+
+/** 资源消息底部官网链接(HTML 模式) */
+const OFFICIAL_URL_FOOTER = 'http://154.17.8.152:3000/';
+
+function htmlEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** 拼接资源 caption + 官网链接,返回 HTML 格式字符串 (caption 原内容做了 HTML escape) */
+function buildResourceCaption(baseCaption: string | null): string {
+  const escaped = baseCaption ? htmlEscape(baseCaption) : '';
+  const link = `<a href="${OFFICIAL_URL_FOOTER}">点击访问官网查看更多内容</a>`;
+  return escaped ? `${escaped}\n\n${link}` : link;
+}
 import type { Context } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
@@ -103,10 +117,12 @@ async function sendPhoto(
   mediaFile: { id: number; filePath: string; type: string },
   caption?: string | null,
   keyboard?: InlineKeyboard,
+  parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
 ) {
   const cachedId = await getCachedFileId(botId, mediaFile.id);
   const opts: any = {};
   if (caption) opts.caption = caption;
+  if (caption && parseMode) opts.parse_mode = parseMode;
   if (keyboard) opts.reply_markup = keyboard;
 
   if (cachedId) {
@@ -149,10 +165,12 @@ async function sendVideo(
   mediaFile: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null },
   caption?: string | null,
   keyboard?: InlineKeyboard,
+  parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
 ) {
   const cachedId = await getCachedFileId(botId, mediaFile.id);
   const opts: any = { supports_streaming: true };
   if (caption) opts.caption = caption;
+  if (caption && parseMode) opts.parse_mode = parseMode;
   if (keyboard) opts.reply_markup = keyboard;
   if (mediaFile.duration) opts.duration = mediaFile.duration;
   if (mediaFile.width) opts.width = mediaFile.width;
@@ -225,6 +243,7 @@ async function sendMediaGroup(
   botId: number,
   mediaFiles: MediaFileLike[],
   caption?: string | null,
+  parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
 ) {
   for (let i = 0; i < mediaFiles.length; i += MEDIA_GROUP_CHUNK_SIZE) {
     const chunk = mediaFiles.slice(i, i + MEDIA_GROUP_CHUNK_SIZE);
@@ -234,12 +253,12 @@ async function sendMediaGroup(
       // 单文件无法用 media group,降级单发(没有 keyboard,因为媒体组本身就不带)
       const mf = chunk[0];
       if (mf.type === 'video') {
-        await sendVideo(ctx, botId, mf, batchCaption);
+        await sendVideo(ctx, botId, mf, batchCaption, undefined, parseMode);
       } else {
-        await sendPhoto(ctx, botId, mf, batchCaption);
+        await sendPhoto(ctx, botId, mf, batchCaption, undefined, parseMode);
       }
     } else {
-      await sendMediaGroupBatch(ctx, botId, chunk, batchCaption);
+      await sendMediaGroupBatch(ctx, botId, chunk, batchCaption, parseMode);
     }
   }
 }
@@ -249,9 +268,11 @@ function buildVideoOpts(
   mf: MediaFileLike,
   itemCaption: string | undefined,
   thumbAbsPath: string | null,
+  parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
 ): any {
   const opts: any = { supports_streaming: true };
   if (itemCaption !== undefined) opts.caption = itemCaption;
+  if (itemCaption !== undefined && parseMode) opts.parse_mode = parseMode;
   if (mf.duration) opts.duration = mf.duration;
   if (mf.width) opts.width = mf.width;
   if (mf.height) opts.height = mf.height;
@@ -267,6 +288,7 @@ async function sendMediaGroupBatch(
   botId: number,
   mediaFiles: MediaFileLike[],
   caption?: string | null,
+  parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
 ) {
   // 1) 预查 file_id 缓存 + v2 占位:这两类都不需要本地副本,跳过 S3 download
   const v2Ids: (string | null)[] = mediaFiles.map((mf) => extractV2PlaceholderFileId(mf.filePath));
@@ -315,9 +337,11 @@ async function sendMediaGroupBatch(
       }
 
       if (mf.type === 'video') {
-        mediaItems.push(InputMediaBuilder.video(source, buildVideoOpts(mf, itemCaption, thumbAbs)));
+        mediaItems.push(InputMediaBuilder.video(source, buildVideoOpts(mf, itemCaption, thumbAbs, parseMode)));
       } else {
-        mediaItems.push(InputMediaBuilder.photo(source, { caption: itemCaption }));
+        const photoOpts: any = { caption: itemCaption };
+        if (itemCaption !== undefined && parseMode) photoOpts.parse_mode = parseMode;
+        mediaItems.push(InputMediaBuilder.photo(source, photoOpts));
       }
     }
 
@@ -353,9 +377,12 @@ async function sendMediaGroupBatch(
           : new InputFile(resolvedMain[i]!.absPath);
         const cap = i === 0 ? (caption ?? undefined) : undefined;
         const thumbAbs = resolvedThumb[i]?.absPath ?? null;
-        return mf.type === 'video'
-          ? InputMediaBuilder.video(src, buildVideoOpts(mf, cap, thumbAbs))
-          : InputMediaBuilder.photo(src, { caption: cap });
+        if (mf.type === 'video') {
+          return InputMediaBuilder.video(src, buildVideoOpts(mf, cap, thumbAbs, parseMode));
+        }
+        const photoOpts: any = { caption: cap };
+        if (cap !== undefined && parseMode) photoOpts.parse_mode = parseMode;
+        return InputMediaBuilder.photo(src, photoOpts);
       });
       const messages = await ctx.replyWithMediaGroup(retryItems);
       for (let i = 0; i < messages.length; i++) {
@@ -491,9 +518,12 @@ export async function sendResource(
   mediaCounts?: { total: number; visible: number; hidden: number },
 ) {
   const { type, mediaFiles } = resource;
-  const caption = resourceId !== undefined
+  const baseCaption = resourceId !== undefined
     ? (resource.caption ? `资源${resourceId}\n${resource.caption}` : `资源${resourceId}`)
     : resource.caption;
+  // 资源 caption 末尾追加官网链接,HTML 模式(原 caption 需 escape 防止特殊字符)
+  const caption = buildResourceCaption(baseCaption);
+  const captionParseMode = 'HTML' as const;
 
   // 「观看量」累加(异步 fire-and-forget):仅在指定了 resourceId 时记一次,排除 reveal 重发
   if (resourceId !== undefined) {
@@ -504,12 +534,18 @@ export async function sendResource(
 
   if (!mediaFiles.length) {
     // 无媒体文件，仅发送文字
-    if (caption) await ctx.reply(caption, keyboard ? { reply_markup: keyboard } : undefined);
+    if (caption) {
+      await ctx.reply(caption, {
+        parse_mode: captionParseMode,
+        ...(keyboard ? { reply_markup: keyboard } : {}),
+        link_preview_options: { is_disabled: true },
+      } as any);
+    }
     return;
   }
 
   if (type === 'media_group') {
-    await sendMediaGroup(ctx, botId, mediaFiles, caption);
+    await sendMediaGroup(ctx, botId, mediaFiles, caption, captionParseMode);
     // media_group 不支持 inline keyboard，单独发送键盘
     if (keyboard) {
       const anchorText = mediaCounts && mediaCounts.hidden > 0
@@ -523,9 +559,9 @@ export async function sendResource(
   // 单文件
   const mf = mediaFiles[0];
   if (type === 'video' || mf.type === 'video') {
-    await sendVideo(ctx, botId, mf, caption, keyboard);
+    await sendVideo(ctx, botId, mf, caption, keyboard, captionParseMode);
   } else {
-    await sendPhoto(ctx, botId, mf, caption, keyboard);
+    await sendPhoto(ctx, botId, mf, caption, keyboard, captionParseMode);
   }
 }
 
