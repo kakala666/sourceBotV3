@@ -13,7 +13,7 @@ import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle'
 import { addLike, removeLike, isLiked } from '../services/resource-like';
 
 /** 这些 callback data 前缀对应用户业务按钮,需要 3s 节流(订阅复核 / 频道管理操作不限) */
-const THROTTLED_CB_PREFIXES = ['next:', 'reveal:', 'fav:', 'like:', 'unlike:'];
+const THROTTLED_CB_PREFIXES = ['next:', 'reveal:', 'fav:', 'like:', 'unlike:', 'search_entry'];
 
 /** 防重复点击：记录正在处理中的 sessionId */
 const processingSet = new Set<number>();
@@ -84,6 +84,17 @@ export async function handleCallback(ctx: Context, botId: number) {
       await handleFavoriteBrowse(ctx, botId);
     } catch (err: any) {
       console.error('[callback] check_favorite 处理失败:', err.message);
+    }
+    return;
+  }
+
+  // search_entry: 资源消息上的「🔍 搜索其他资源」inline 按钮,等同常驻键盘同名按钮
+  if (data === 'search_entry') {
+    try {
+      await ctx.answerCallbackQuery();
+      await handleSearchEntry(ctx, botId);
+    } catch (err: any) {
+      console.error('[callback] search_entry 处理失败:', err.message);
     }
     return;
   }

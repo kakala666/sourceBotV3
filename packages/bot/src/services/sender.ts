@@ -484,6 +484,12 @@ function buildContentKeyboard(
     keyboard.url('🔍 搜索更多资源', searchMoreUrl).row();
   }
 
+  // 「🔍 搜索其他资源」inline 入口(与常驻键盘同名按钮功能一致 → handleSearchEntry)
+  // 放在翻页按钮上方,任何资源消息(只要有点赞/收藏/翻页中至少一个)都显示
+  if (hasPageBtn || hasLike || hasFav) {
+    keyboard.text('🔍 搜索其他资源', 'search_entry').row();
+  }
+
   // 翻页按钮
   if (hasPageBtn) {
     keyboard.text('下一页 ▶', `next:${sessionId}:${nextIndex}`);
