@@ -478,7 +478,7 @@ async function processNextPage(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId, resourceId: binding.resource.id };
+  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption };
 
   // 搜索/分享路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
   const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
@@ -588,7 +588,7 @@ async function processReveal(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(session.botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId: _botId, resourceId: binding.resource.id };
+  const shareInfo = { botId: _botId, resourceId: binding.resource.id, caption: binding.resource.caption };
   const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
 
   let newKeyboard;

@@ -10,7 +10,7 @@ function htmlEscape(s: string): string {
 /** 拼接资源 caption + 官网链接,返回 HTML 格式字符串 (caption 原内容做了 HTML escape) */
 function buildResourceCaption(baseCaption: string | null): string {
   const escaped = baseCaption ? htmlEscape(baseCaption) : '';
-  const link = `<a href="${OFFICIAL_URL_FOOTER}">点击访问官网查看更多内容</a>`;
+  const link = `<a href="${OFFICIAL_URL_FOOTER}">观看此资源完整版，请点击这里官网进行访问</a>`;
   return escaped ? `${escaped}\n\n${link}` : link;
 }
 import type { Context } from 'grammy';
@@ -424,7 +424,7 @@ function buildContentKeyboard(
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
   globalButtons?: { text: string; url: string }[] | null,
   likeInfo?: { sessionId: number; resourceId: number; liked: boolean } | null,
-  shareInfo?: { botId: number; resourceId: number } | null,
+  shareInfo?: { botId: number; resourceId: number; caption?: string | null } | null,
 ): InlineKeyboard | undefined {
   // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
   const validContentButtons = (contentButtons ?? []).filter(
@@ -491,9 +491,17 @@ function buildContentKeyboard(
   }
 
   // 「🔗 分享」放最末行:点击弹出 Telegram 原生「分享到」对话框,转发 deep link 给联系人
+  // text 部分用资源 caption + 提示;t.me/share/url 协议的 text 是纯文本(不解析
+  // Markdown),url 参数会自动追加在 text 末尾作为可点击蓝链
   if (hasShare) {
     const deepLink = `https://t.me/${shareUsername}?start=share_${shareInfo!.resourceId}`;
-    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent('点击查看这条资源')}`;
+    // caption 截断保护:整 URL 长度 < 4096,中文 URL-encoded 后膨胀 3x
+    const rawCaption = (shareInfo!.caption || '').trim();
+    const truncated = rawCaption.length > 600 ? rawCaption.slice(0, 600) + '...' : rawCaption;
+    const shareText = truncated
+      ? `${truncated}\n\n👇 点击下方链接查看`
+      : '👇 点击下方链接查看';
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(deepLink)}&text=${encodeURIComponent(shareText)}`;
     keyboard.url('🔗 分享', shareUrl);
   }
 

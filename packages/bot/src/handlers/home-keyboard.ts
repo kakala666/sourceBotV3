@@ -50,7 +50,7 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
   const favoriteInfo = { sessionId: session.id, resourceId: resource.id };
   const liked = await isLiked(botUser.id, resource.id);
   const likeInfo = { sessionId: session.id, resourceId: resource.id, liked };
-  const shareInfo = { botId, resourceId: resource.id };
+  const shareInfo = { botId, resourceId: resource.id, caption: resource.caption };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
@@ -107,7 +107,7 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   const favoriteInfo = { sessionId: session.id, resourceId: first.resource.id };
   const liked = await isLiked(botUser.id, first.resource.id);
   const likeInfo = { sessionId: session.id, resourceId: first.resource.id, liked };
-  const shareInfo = { botId, resourceId: first.resource.id };
+  const shareInfo = { botId, resourceId: first.resource.id, caption: first.resource.caption };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,

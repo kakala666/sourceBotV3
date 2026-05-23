@@ -137,7 +137,7 @@ async function sendFirstResource(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(botUserId, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId, resourceId: binding.resource.id };
+  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption };
 
   const mediaCounts = {
     total: allMediaFiles.length,
@@ -243,7 +243,7 @@ async function handleShareStart(ctx: Context, botId: number, originResourceId: n
   const favoriteInfo = { sessionId: session.id, resourceId: first.id };
   const liked = await isLiked(botUser.id, first.id);
   const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
-  const shareInfo = { botId, resourceId: first.id };
+  const shareInfo = { botId, resourceId: first.id, caption: first.caption };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,
