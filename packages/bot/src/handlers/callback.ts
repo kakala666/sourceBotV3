@@ -8,6 +8,7 @@ import { ensureSubscribed, getGateConfig } from '../services/subscription-check'
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
+import { handleSearchEntry } from './search';
 import { shouldThrottle, sendThrottledNotice } from '../services/click-throttle';
 import { addLike, removeLike, isLiked } from '../services/resource-like';
 
@@ -83,6 +84,20 @@ export async function handleCallback(ctx: Context, botId: number) {
       await handleFavoriteBrowse(ctx, botId);
     } catch (err: any) {
       console.error('[callback] check_favorite 处理失败:', err.message);
+    }
+    return;
+  }
+
+  // check_search:订阅校验后引回「🔍 搜索入口」提示重新输入关键词
+  // (handleSearchQuery 也会触发同一前缀;原关键词没法塞进 64 字节 callback data,
+  //  所以统一回到 entry 提示,用户重新输入即可)
+  const checkSearchMatch = data.match(/^check_search:\d+:\d+$/);
+  if (checkSearchMatch) {
+    try {
+      await ctx.answerCallbackQuery();
+      await handleSearchEntry(ctx, botId);
+    } catch (err: any) {
+      console.error('[callback] check_search 处理失败:', err.message);
     }
     return;
   }

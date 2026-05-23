@@ -6,6 +6,8 @@ import { getGlobalButtons } from '../services/bot-global-buttons';
 import { isLiked } from '../services/resource-like';
 import { searchResources } from '../services/resource-search';
 import { markPending } from '../services/search-pending';
+import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
+import { sendSubscriptionPrompt } from '../services/subscription-prompt';
 
 const MAX_KEYWORD_LEN = 100;
 
@@ -24,6 +26,16 @@ export async function handleSearchEntry(ctx: Context, botId: number) {
     return;
   }
 
+  // 订阅检查 — 与 🎲 / ⭐ / 翻页 callback 路径一致,不允许搜索绕过
+  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
+  if (!gateResult.ok) {
+    const config = getGateConfig(botUser.inviteLinkId);
+    await sendSubscriptionPrompt(
+      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_search',
+    );
+    return;
+  }
+
   markPending(botId, from.id);
   await ctx.reply('🔍 请发送你要搜索的关键词(任意一句文本即可)');
 }
@@ -39,6 +51,17 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
     where: { telegramId: BigInt(from.id), botId },
   });
   if (!botUser) return;
+
+  // 订阅检查兜底 — 该函数也会被 /start search_N(热搜 deep link)直接调用,
+  // 不经过 handleSearchEntry,故必须在这里独立检查
+  const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
+  if (!gateResult.ok) {
+    const config = getGateConfig(botUser.inviteLinkId);
+    await sendSubscriptionPrompt(
+      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_search',
+    );
+    return;
+  }
 
   const trimmed = keyword.trim().slice(0, MAX_KEYWORD_LEN);
   if (!trimmed) {
