@@ -387,20 +387,11 @@ async function processNextPage(
   trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
-  // search / hot 模式跳过主频道,只查赞助商(用户没绑定特定 link)
-  // share 模式分两种:
-  //   - 新链接 share_<r>_<linkId> (payload.sourceLinkId 为 number):BotUser
-  //     已绑分享人的 link,查完整 gate(含主频道)
-  //   - 老链接 share_<r>(payload.sourceLinkId 为 null):仍 skipPrimary 保守
-  const sessionPayload = session.payload as { sourceLinkId?: number | null } | null;
-  const isNewShare = session.mode === 'share' && sessionPayload?.sourceLinkId != null;
-  const skipPrimary =
-    session.mode === 'search' ||
-    session.mode === 'hot' ||
-    (session.mode === 'share' && !isNewShare);
+  // 所有 session.mode 都用 BotUser.inviteLinkId 完整查 gate(主频道+赞助商)。
+  // BotUser.inviteLinkId 是 NOT NULL,每个用户都有真实归属(share 老链接是
+  // fallback 到 bot 第一条 link,也是合法 link),无需 skipPrimary 特例。
   const gateResult = await ensureSubscribed(
     botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
-    { skipPrimary },
   );
   if (!gateResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
