@@ -387,8 +387,17 @@ async function processNextPage(
   trackedInviteLinkId = botUser.inviteLinkId;
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
-  // search / share / hot 模式跳过主频道,只查赞助商(用户没绑定特定 link)
-  const skipPrimary = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
+  // search / hot 模式跳过主频道,只查赞助商(用户没绑定特定 link)
+  // share 模式分两种:
+  //   - 新链接 share_<r>_<linkId> (payload.sourceLinkId 为 number):BotUser
+  //     已绑分享人的 link,查完整 gate(含主频道)
+  //   - 老链接 share_<r>(payload.sourceLinkId 为 null):仍 skipPrimary 保守
+  const sessionPayload = session.payload as { sourceLinkId?: number | null } | null;
+  const isNewShare = session.mode === 'share' && sessionPayload?.sourceLinkId != null;
+  const skipPrimary =
+    session.mode === 'search' ||
+    session.mode === 'hot' ||
+    (session.mode === 'share' && !isNewShare);
   const gateResult = await ensureSubscribed(
     botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
     { skipPrimary },
@@ -478,7 +487,7 @@ async function processNextPage(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption };
+  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption, inviteLinkId: botUser.inviteLinkId };
 
   // 搜索/分享路径不带「🔍 搜索更多资源」按钮(避免视觉重复)
   const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
@@ -588,7 +597,7 @@ async function processReveal(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(session.botUser.id, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId: _botId, resourceId: binding.resource.id, caption: binding.resource.caption };
+  const shareInfo = { botId: _botId, resourceId: binding.resource.id, caption: binding.resource.caption, inviteLinkId: session.botUser.inviteLinkId };
   const isSearchMode = session.mode === 'search' || session.mode === 'share' || session.mode === 'hot';
 
   let newKeyboard;

@@ -41,10 +41,14 @@ export async function handleStart(ctx: Context, botId: number) {
   // 此处 payload 一定有值(上面要么 early-return,要么赋了 defaultCode)
   const pl = payload as string;
 
-  // 分享 deep link: /start share_{resourceId}
-  const shareMatch = pl.match(/^share_(\d+)$/);
+  // 分享 deep link:
+  //   - 老格式 /start share_{resourceId}            → sourceLinkId 缺失,走 fallbackLink + skipPrimary
+  //   - 新格式 /start share_{resourceId}_{linkId}   → 用 linkId 作 BotUser 归属,共享分享人 gate
+  const shareMatch = pl.match(/^share_(\d+)(?:_(\d+))?$/);
   if (shareMatch) {
-    await handleShareStart(ctx, botId, parseInt(shareMatch[1], 10));
+    const resourceId = parseInt(shareMatch[1], 10);
+    const sourceLinkId = shareMatch[2] ? parseInt(shareMatch[2], 10) : null;
+    await handleShareStart(ctx, botId, resourceId, sourceLinkId);
     return;
   }
 
@@ -137,7 +141,7 @@ async function sendFirstResource(
   const favoriteInfo = { sessionId, resourceId: binding.resource.id };
   const liked = await isLiked(botUserId, binding.resource.id);
   const likeInfo = { sessionId, resourceId: binding.resource.id, liked };
-  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption };
+  const shareInfo = { botId, resourceId: binding.resource.id, caption: binding.resource.caption, inviteLinkId };
 
   const mediaCounts = {
     total: allMediaFiles.length,
@@ -178,7 +182,12 @@ async function sendFirstResource(
  *   - 用 bot 第一个 inviteLink 作 fallback 创建/更新 BotUser
  *   - 序列 = [origin, ...top99 按 likes/favs/views/id desc 排序去掉 origin]
  */
-async function handleShareStart(ctx: Context, botId: number, originResourceId: number) {
+async function handleShareStart(
+  ctx: Context,
+  botId: number,
+  originResourceId: number,
+  sourceLinkId: number | null = null,
+) {
   const from = ctx.from;
   if (!from) return;
 
@@ -191,21 +200,38 @@ async function handleShareStart(ctx: Context, botId: number, originResourceId: n
     return;
   }
 
-  // 该 bot 必须至少有一个 inviteLink 作为 BotUser 关联 fallback
-  const fallbackLink = await prisma.inviteLink.findFirst({
-    where: { botId },
-    orderBy: { id: 'asc' },
-    select: { id: true },
-  });
-  if (!fallbackLink) {
-    await ctx.reply('⚠️ 暂时无法访问,请稍后再试');
-    return;
+  // BotUser 关联的 inviteLink 决策:
+  //   - 新格式 share_<r>_<linkId>:用分享人的 linkId,从而新进用户共享分享人的 gate
+  //     (主频道+赞助商一起查)。需校验该 link 确实属于本 bot 避免跨 bot 串号
+  //   - 老格式 share_<r> 或 sourceLinkId 无效:回退到本 bot 第一条 link(旧行为)
+  let resolvedLinkId: number;
+  if (sourceLinkId !== null) {
+    const valid = await prisma.inviteLink.findUnique({
+      where: { id: sourceLinkId },
+      select: { botId: true },
+    });
+    if (valid && valid.botId === botId) {
+      resolvedLinkId = sourceLinkId;
+    } else {
+      const fb = await prisma.inviteLink.findFirst({
+        where: { botId }, orderBy: { id: 'asc' }, select: { id: true },
+      });
+      if (!fb) { await ctx.reply('⚠️ 暂时无法访问,请稍后再试'); return; }
+      resolvedLinkId = fb.id;
+      sourceLinkId = null; // 标记成"老链接"语义,翻页时仍走 skipPrimary
+    }
+  } else {
+    const fb = await prisma.inviteLink.findFirst({
+      where: { botId }, orderBy: { id: 'asc' }, select: { id: true },
+    });
+    if (!fb) { await ctx.reply('⚠️ 暂时无法访问,请稍后再试'); return; }
+    resolvedLinkId = fb.id;
   }
 
   const botUser = await upsertBotUser(
     BigInt(from.id),
     botId,
-    fallbackLink.id,
+    resolvedLinkId,
     from.first_name,
     from.last_name ?? undefined,
     from.username ?? undefined,
@@ -217,9 +243,11 @@ async function handleShareStart(ctx: Context, botId: number, originResourceId: n
     return;
   }
 
+  // sourceLinkId 写进 session.payload:翻页订阅检查靠它判断是否查主频道。
+  // null = 老链接(skipPrimary 保守);number = 新链接(查完整 gate)
   const session = await resetSession(botUser.id, {
     mode: 'share',
-    payload: { originResourceId, resourceIds },
+    payload: { originResourceId, resourceIds, sourceLinkId },
   });
 
   // 发欢迎键盘 + 首条资源(=origin)
@@ -243,7 +271,7 @@ async function handleShareStart(ctx: Context, botId: number, originResourceId: n
   const favoriteInfo = { sessionId: session.id, resourceId: first.id };
   const liked = await isLiked(botUser.id, first.id);
   const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
-  const shareInfo = { botId, resourceId: first.id, caption: first.caption };
+  const shareInfo = { botId, resourceId: first.id, caption: first.caption, inviteLinkId: botUser.inviteLinkId };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,

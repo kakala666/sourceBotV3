@@ -97,7 +97,7 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   const favoriteInfo = { sessionId: session.id, resourceId: first.id };
   const liked = await isLiked(botUser.id, first.id);
   const likeInfo = { sessionId: session.id, resourceId: first.id, liked };
-  const shareInfo = { botId, resourceId: first.id, caption: first.caption };
+  const shareInfo = { botId, resourceId: first.id, caption: first.caption, inviteLinkId: botUser.inviteLinkId };
   const mediaCounts = {
     total: allMediaFiles.length,
     visible: visibleMediaFiles.length,

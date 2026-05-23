@@ -424,7 +424,7 @@ function buildContentKeyboard(
   favoriteInfo?: { sessionId: number; resourceId: number } | null,
   globalButtons?: { text: string; url: string }[] | null,
   likeInfo?: { sessionId: number; resourceId: number; liked: boolean } | null,
-  shareInfo?: { botId: number; resourceId: number; caption?: string | null } | null,
+  shareInfo?: { botId: number; resourceId: number; caption?: string | null; inviteLinkId?: number | null } | null,
 ): InlineKeyboard | undefined {
   // 过滤掉无效按钮:text 或 url 为空都会让 Telegram 把按钮解析成 KeyboardButton 报错
   const validContentButtons = (contentButtons ?? []).filter(
@@ -494,7 +494,11 @@ function buildContentKeyboard(
   // text 部分用资源 caption + 提示;t.me/share/url 协议的 text 是纯文本(不解析
   // Markdown),url 参数会自动追加在 text 末尾作为可点击蓝链
   if (hasShare) {
-    const deepLink = `https://t.me/${shareUsername}?start=share_${shareInfo!.resourceId}`;
+    // payload 格式 share_<resourceId>(老)/share_<resourceId>_<inviteLinkId>(新).
+    // 新格式让接收方进入时把 BotUser.inviteLinkId 绑到分享人的 link,从而共享
+    // 同一套强制订阅 gate(主频道+赞助商)。
+    const linkPart = shareInfo!.inviteLinkId ? `_${shareInfo!.inviteLinkId}` : '';
+    const deepLink = `https://t.me/${shareUsername}?start=share_${shareInfo!.resourceId}${linkPart}`;
     // caption 截断保护:整 URL 长度 < 4096,中文 URL-encoded 后膨胀 3x
     const rawCaption = (shareInfo!.caption || '').trim();
     const truncated = rawCaption.length > 600 ? rawCaption.slice(0, 600) + '...' : rawCaption;
