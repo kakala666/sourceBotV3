@@ -13,24 +13,28 @@ function parseRange(startDate?: string, endDate?: string): { start: Date; end: D
 }
 
 export class StatsService {
-  static async overview(): Promise<StatsOverview> {
+  static async overview(botId?: number): Promise<StatsOverview> {
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
+    const botFilter = botId ? { botId } : {};
+
     const [todayNewUsers, totalUsers, todayAdImpressions] = await Promise.all([
-      prisma.botUser.count({ where: { firstSeenAt: { gte: todayStart } } }),
-      prisma.botUser.count(),
-      prisma.adImpression.count({ where: { viewedAt: { gte: todayStart } } }),
+      prisma.botUser.count({ where: { ...botFilter, firstSeenAt: { gte: todayStart } } }),
+      prisma.botUser.count({ where: botFilter }),
+      prisma.adImpression.count({ where: { ...botFilter, viewedAt: { gte: todayStart } } }),
     ]);
 
     return { todayNewUsers, totalUsers, todayAdImpressions };
   }
 
-  static async daily(startDate: string, endDate: string): Promise<DailyStat[]> {
+  static async daily(startDate: string, endDate: string, botId?: number): Promise<DailyStat[]> {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
     const end = new Date(endDate);
     end.setHours(23, 59, 59, 999);
+
+    const botFilter = botId ? { botId } : {};
 
     // 生成日期范围
     const dates: Date[] = [];
@@ -49,10 +53,10 @@ export class StatsService {
 
       const [newUsers, adImpressions] = await Promise.all([
         prisma.botUser.count({
-          where: { firstSeenAt: { gte: dayStart, lte: dayEnd } },
+          where: { ...botFilter, firstSeenAt: { gte: dayStart, lte: dayEnd } },
         }),
         prisma.adImpression.count({
-          where: { viewedAt: { gte: dayStart, lte: dayEnd } },
+          where: { ...botFilter, viewedAt: { gte: dayStart, lte: dayEnd } },
         }),
       ]);
 

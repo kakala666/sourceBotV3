@@ -6,9 +6,10 @@ import { success, fail } from '../utils/response';
 const router: IRouter = Router();
 router.use(authMiddleware);
 
-router.get('/overview', async (_req, res) => {
+router.get('/overview', async (req, res) => {
   try {
-    const data = await StatsService.overview();
+    const { botId } = req.query;
+    const data = await StatsService.overview(botId ? parseInt(botId as string) : undefined);
     return success(res, data);
   } catch (err: any) {
     return fail(res, err.message, 500);
@@ -17,11 +18,15 @@ router.get('/overview', async (_req, res) => {
 
 router.get('/daily', async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
+    const { startDate, endDate, botId } = req.query;
     if (!startDate || !endDate) {
       return fail(res, 'startDate 和 endDate 参数必填');
     }
-    const data = await StatsService.daily(startDate as string, endDate as string);
+    const data = await StatsService.daily(
+      startDate as string,
+      endDate as string,
+      botId ? parseInt(botId as string) : undefined,
+    );
     return success(res, data);
   } catch (err: any) {
     return fail(res, err.message, 500);

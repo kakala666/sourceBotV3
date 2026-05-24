@@ -132,23 +132,25 @@ export default function Stats() {
 
   const fetchOverview = useCallback(async () => {
     try {
-      const { data } = await api.get<ApiResponse<StatsOverview>>('/stats/overview');
+      const params: Record<string, any> = {};
+      if (selectedBotId) params.botId = selectedBotId;
+      const { data } = await api.get<ApiResponse<StatsOverview>>('/stats/overview', { params });
       setOverview(data.data ?? null);
     } catch {
       message.error('获取概览数据失败');
     }
-  }, []);
+  }, [selectedBotId]);
 
   const fetchDailyStats = useCallback(async () => {
     try {
-      const { data } = await api.get<ApiResponse<DailyStat[]>>('/stats/daily', {
-        params: rangeParams,
-      });
+      const params: Record<string, any> = { ...rangeParams };
+      if (selectedBotId) params.botId = selectedBotId;
+      const { data } = await api.get<ApiResponse<DailyStat[]>>('/stats/daily', { params });
       setDailyStats(data.data || []);
     } catch {
       message.error('获取趋势数据失败');
     }
-  }, [rangeParams]);
+  }, [rangeParams, selectedBotId]);
 
   const fetchLinkStats = useCallback(async () => {
     setLoading(true);
