@@ -64,9 +64,17 @@ export async function getStatsGroupId(): Promise<string> {
 }
 
 /**
+ * 「🔍 搜索更多资源」URL 跳转按钮总开关
+ * 设为 true 可恢复显示(链接仍从 SystemSetting.searchMoreUrl 读取)
+ */
+const SEARCH_MORE_URL_ENABLED = false;
+
+/**
  * 获取「搜索更多资源」按钮跳转链接
+ * 开关关闭时返回空串,所有键盘构建处按 falsy 跳过该按钮
  */
 export async function getSearchMoreUrl(): Promise<string> {
+  if (!SEARCH_MORE_URL_ENABLED) return '';
   return getSystemSetting<string>('searchMoreUrl', 'https://t.me/ssejqr88bot');
 }
 
