@@ -5,8 +5,8 @@ import { loadContentBindings, loadAdBindings, getAdDisplaySeconds, getEndContent
 import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKeyboard } from '../services/sender';
 import { getGlobalButtons } from '../services/bot-global-buttons';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
-import { sendSubscriptionPrompt } from '../services/subscription-prompt';
-import { checkAntiLost, sendAntiLostPrompt, answerAntiLostAlert } from '../services/anti-lost-check';
+import { sendGatePrompt } from '../services/subscription-prompt';
+import { checkAntiLost, answerAntiLostAlert } from '../services/anti-lost-check';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
 import { handleSearchEntry } from './search';
@@ -279,11 +279,6 @@ export async function handleCallback(ctx: Context, botId: number) {
       if (!session) return;
       trackedBotUserId = session.botUser.id;
       trackedInviteLinkId = session.botUser.inviteLinkId;
-      const lostResult = await checkAntiLost(session.botUser.telegramId);
-      if (!lostResult.ok) {
-        await sendAntiLostPrompt(ctx, lostResult.reason, sessionId, currentIndex, 'check_reveal');
-        return;
-      }
       // 展开"第 N 个资源"中 N = currentIndex + 1
       const gateResult = await ensureSubscribed(
         session.botUser.inviteLinkId,
@@ -291,14 +286,16 @@ export async function handleCallback(ctx: Context, botId: number) {
         ctx.api,
         currentIndex + 1,
       );
-      if (!gateResult.ok) {
+      const lostResult = await checkAntiLost(session.botUser.telegramId);
+      if (!gateResult.ok || !lostResult.ok) {
         const config = getGateConfig(session.botUser.inviteLinkId);
-        await sendSubscriptionPrompt(
+        await sendGatePrompt(
           ctx,
           config?.promptTemplate,
           sessionId,
           currentIndex,
-          gateResult.missing,
+          gateResult.ok ? [] : gateResult.missing,
+          lostResult.ok ? null : lostResult.reason,
           'check_reveal',
         );
         return;
@@ -403,12 +400,6 @@ async function processNextPage(
   trackedBotUserId = botUser.id;
   trackedInviteLinkId = botUser.inviteLinkId;
 
-  const lostResult = await checkAntiLost(botUser.telegramId);
-  if (!lostResult.ok) {
-    await sendAntiLostPrompt(ctx, lostResult.reason, sessionId, nextIndex, 'check_sub');
-    return;
-  }
-
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
   // 所有 session.mode 都用 BotUser.inviteLinkId 完整查 gate(主频道+赞助商)。
   // BotUser.inviteLinkId 是 NOT NULL,每个用户都有真实归属(share 老链接是
@@ -416,9 +407,15 @@ async function processNextPage(
   const gateResult = await ensureSubscribed(
     botUser.inviteLinkId, botUser.telegramId, ctx.api, nextIndex,
   );
-  if (!gateResult.ok) {
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!gateResult.ok || !lostResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
-    await sendSubscriptionPrompt(ctx, config?.promptTemplate, sessionId, nextIndex, gateResult.missing);
+    await sendGatePrompt(
+      ctx, config?.promptTemplate, sessionId, nextIndex,
+      gateResult.ok ? [] : gateResult.missing,
+      lostResult.ok ? null : lostResult.reason,
+      'check_sub',
+    );
     return;
   }
 

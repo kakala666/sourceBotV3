@@ -7,8 +7,8 @@ import { isLiked } from '../services/resource-like';
 import { pickRandomContentResource } from '../services/random-resource';
 import { loadFavoriteList } from '../services/favorite-list';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
-import { sendSubscriptionPrompt } from '../services/subscription-prompt';
-import { checkAntiLost, sendAntiLostPrompt } from '../services/anti-lost-check';
+import { sendGatePrompt } from '../services/subscription-prompt';
+import { checkAntiLost } from '../services/anti-lost-check';
 import { getSearchMoreUrl } from '../services/content';
 
 /**
@@ -26,17 +26,15 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
     return;
   }
 
-  const lostResult = await checkAntiLost(botUser.telegramId);
-  if (!lostResult.ok) {
-    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_random');
-    return;
-  }
-
   const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
-  if (!gateResult.ok) {
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!gateResult.ok || !lostResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
-    await sendSubscriptionPrompt(
-      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_random',
+    await sendGatePrompt(
+      ctx, config?.promptTemplate, 0, 0,
+      gateResult.ok ? [] : gateResult.missing,
+      lostResult.ok ? null : lostResult.reason,
+      'check_random',
     );
     return;
   }
@@ -88,17 +86,15 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
     return;
   }
 
-  const lostResult = await checkAntiLost(botUser.telegramId);
-  if (!lostResult.ok) {
-    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_favorite');
-    return;
-  }
-
   const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
-  if (!gateResult.ok) {
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!gateResult.ok || !lostResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
-    await sendSubscriptionPrompt(
-      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_favorite',
+    await sendGatePrompt(
+      ctx, config?.promptTemplate, 0, 0,
+      gateResult.ok ? [] : gateResult.missing,
+      lostResult.ok ? null : lostResult.reason,
+      'check_favorite',
     );
     return;
   }

@@ -7,8 +7,8 @@ import { isLiked } from '../services/resource-like';
 import { searchResources } from '../services/resource-search';
 import { markPending } from '../services/search-pending';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
-import { sendSubscriptionPrompt } from '../services/subscription-prompt';
-import { checkAntiLost, sendAntiLostPrompt } from '../services/anti-lost-check';
+import { sendGatePrompt } from '../services/subscription-prompt';
+import { checkAntiLost } from '../services/anti-lost-check';
 
 const MAX_KEYWORD_LEN = 100;
 
@@ -27,18 +27,16 @@ export async function handleSearchEntry(ctx: Context, botId: number) {
     return;
   }
 
-  const lostResult = await checkAntiLost(botUser.telegramId);
-  if (!lostResult.ok) {
-    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_search');
-    return;
-  }
-
   // 订阅检查 — 与 🎲 / ⭐ / 翻页 callback 路径一致,不允许搜索绕过
   const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
-  if (!gateResult.ok) {
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!gateResult.ok || !lostResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
-    await sendSubscriptionPrompt(
-      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_search',
+    await sendGatePrompt(
+      ctx, config?.promptTemplate, 0, 0,
+      gateResult.ok ? [] : gateResult.missing,
+      lostResult.ok ? null : lostResult.reason,
+      'check_search',
     );
     return;
   }
@@ -59,19 +57,17 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
   });
   if (!botUser) return;
 
-  const lostResult = await checkAntiLost(botUser.telegramId);
-  if (!lostResult.ok) {
-    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_search');
-    return;
-  }
-
   // 订阅检查兜底 — 该函数也会被 /start search_N(热搜 deep link)直接调用,
   // 不经过 handleSearchEntry,故必须在这里独立检查
   const gateResult = await ensureSubscribed(botUser.inviteLinkId, botUser.telegramId, ctx.api);
-  if (!gateResult.ok) {
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!gateResult.ok || !lostResult.ok) {
     const config = getGateConfig(botUser.inviteLinkId);
-    await sendSubscriptionPrompt(
-      ctx, config?.promptTemplate, 0, 0, gateResult.missing, 'check_search',
+    await sendGatePrompt(
+      ctx, config?.promptTemplate, 0, 0,
+      gateResult.ok ? [] : gateResult.missing,
+      lostResult.ok ? null : lostResult.reason,
+      'check_search',
     );
     return;
   }
