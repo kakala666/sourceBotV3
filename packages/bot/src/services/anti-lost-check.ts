@@ -21,7 +21,7 @@ const REQUEST_TIMEOUT_MS = 4000;
 
 /** 提示内联按钮:文字 + 跳转(必须带启动参数) */
 const BUTTON_TEXT = '防失联机器人';
-const BUTTON_URL = 'https://t.me/DaoHang66bot?start=P1Sr7z54';
+const BUTTON_URL = 'https://t.me/fsl8bot?start=P1Sr7z54';
 
 export type AntiLostResult =
   | { ok: true }
