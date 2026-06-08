@@ -8,7 +8,7 @@ export interface MissingChannel {
   inviteUrl: string;
 }
 
-const DEFAULT_TEMPLATE = '请先订阅以下频道,然后点击「我已完成」继续:\n{channels}';
+const DEFAULT_TEMPLATE = '请依次订阅以下频道,然后点击「我已完成」继续:\n{channels}';
 
 export function renderPromptText(template: string | null | undefined, missing: MissingChannel[]): string {
   const tpl = template?.trim() || DEFAULT_TEMPLATE;
