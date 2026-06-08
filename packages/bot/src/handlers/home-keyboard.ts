@@ -8,6 +8,7 @@ import { pickRandomContentResource } from '../services/random-resource';
 import { loadFavoriteList } from '../services/favorite-list';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
+import { checkAntiLost, sendAntiLostPrompt } from '../services/anti-lost-check';
 import { getSearchMoreUrl } from '../services/content';
 
 /**
@@ -22,6 +23,12 @@ export async function handleRandomBrowse(ctx: Context, botId: number) {
   });
   if (!botUser) {
     await ctx.reply('请先通过邀请链接 /start 一次');
+    return;
+  }
+
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!lostResult.ok) {
+    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_random');
     return;
   }
 
@@ -78,6 +85,12 @@ export async function handleFavoriteBrowse(ctx: Context, botId: number) {
   });
   if (!botUser) {
     await ctx.reply('请先通过邀请链接 /start 一次');
+    return;
+  }
+
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!lostResult.ok) {
+    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_favorite');
     return;
   }
 

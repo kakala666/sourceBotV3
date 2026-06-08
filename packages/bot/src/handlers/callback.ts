@@ -6,6 +6,7 @@ import { sendResource, sendAd, sendEndContent, buildPageKeyboard, buildContentKe
 import { getGlobalButtons } from '../services/bot-global-buttons';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
+import { checkAntiLost, sendAntiLostPrompt, answerAntiLostAlert } from '../services/anti-lost-check';
 import { handleResourceAssignment, handleMediaVisibilityToggle, handleMediaVisibilitySave, handleResetPage, handleResetPick } from '../services/channel-collector';
 import { handleRandomBrowse, handleFavoriteBrowse } from './home-keyboard';
 import { handleSearchEntry } from './search';
@@ -278,6 +279,11 @@ export async function handleCallback(ctx: Context, botId: number) {
       if (!session) return;
       trackedBotUserId = session.botUser.id;
       trackedInviteLinkId = session.botUser.inviteLinkId;
+      const lostResult = await checkAntiLost(session.botUser.telegramId);
+      if (!lostResult.ok) {
+        await sendAntiLostPrompt(ctx, lostResult.reason, sessionId, currentIndex, 'check_reveal');
+        return;
+      }
       // 展开"第 N 个资源"中 N = currentIndex + 1
       const gateResult = await ensureSubscribed(
         session.botUser.inviteLinkId,
@@ -396,6 +402,12 @@ async function processNextPage(
   const { botUser } = session;
   trackedBotUserId = botUser.id;
   trackedInviteLinkId = botUser.inviteLinkId;
+
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!lostResult.ok) {
+    await sendAntiLostPrompt(ctx, lostResult.reason, sessionId, nextIndex, 'check_sub');
+    return;
+  }
 
   // 强制订阅拦截:翻页"从第 N 翻到 N+1" → position = nextIndex
   // 所有 session.mode 都用 BotUser.inviteLinkId 完整查 gate(主频道+赞助商)。
@@ -640,6 +652,13 @@ async function handleSubscriptionRecheck(
     return;
   }
 
+  // 防失联复核:未通过弹 alert(不刷屏),原提示消息仍在
+  const lostResult = await checkAntiLost(session.botUser.telegramId);
+  if (!lostResult.ok) {
+    await answerAntiLostAlert(ctx, lostResult.reason);
+    return;
+  }
+
   // 复核翻页:同 processNextPage 的 position
   const result = await ensureSubscribed(
     session.botUser.inviteLinkId,
@@ -683,6 +702,13 @@ async function handleRevealRecheck(
   });
   if (!session) {
     await ctx.answerCallbackQuery({ text: '会话已失效', show_alert: true });
+    return;
+  }
+
+  // 防失联复核:未通过弹 alert(不刷屏)
+  const lostResult = await checkAntiLost(session.botUser.telegramId);
+  if (!lostResult.ok) {
+    await answerAntiLostAlert(ctx, lostResult.reason);
     return;
   }
 

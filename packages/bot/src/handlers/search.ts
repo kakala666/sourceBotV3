@@ -8,6 +8,7 @@ import { searchResources } from '../services/resource-search';
 import { markPending } from '../services/search-pending';
 import { ensureSubscribed, getGateConfig } from '../services/subscription-check';
 import { sendSubscriptionPrompt } from '../services/subscription-prompt';
+import { checkAntiLost, sendAntiLostPrompt } from '../services/anti-lost-check';
 
 const MAX_KEYWORD_LEN = 100;
 
@@ -23,6 +24,12 @@ export async function handleSearchEntry(ctx: Context, botId: number) {
   });
   if (!botUser) {
     await ctx.reply('请先通过邀请链接 /start 一次');
+    return;
+  }
+
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!lostResult.ok) {
+    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_search');
     return;
   }
 
@@ -51,6 +58,12 @@ export async function handleSearchQuery(ctx: Context, botId: number, keyword: st
     where: { telegramId: BigInt(from.id), botId },
   });
   if (!botUser) return;
+
+  const lostResult = await checkAntiLost(botUser.telegramId);
+  if (!lostResult.ok) {
+    await sendAntiLostPrompt(ctx, lostResult.reason, 0, 0, 'check_search');
+    return;
+  }
 
   // 订阅检查兜底 — 该函数也会被 /start search_N(热搜 deep link)直接调用,
   // 不经过 handleSearchEntry,故必须在这里独立检查
