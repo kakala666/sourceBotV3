@@ -19,6 +19,7 @@ import path from 'path';
 import { isS3Path, parseS3Key, downloadToTmp, cleanupTmp } from './storage';
 import { getBotUsername } from './bot-meta';
 import { extractFileId } from './media-fileid';
+import { fetchFileIdViaRelay } from './relay-fileid';
 
 /** 上传文件的根目录，优先使用环境变量，否则从 cwd 推断 */
 const UPLOADS_ROOT = process.env.UPLOAD_DIR
@@ -44,6 +45,10 @@ function extractV2PlaceholderFileId(filePath: string): string | null {
  * v2-placeholder 路径在调用前已经被 short-circuit,这里不应该再看到。
  */
 async function resolveLocalPath(filePath: string): Promise<{ absPath: string; cleanup: () => void }> {
+  if (!filePath) {
+    // 新资源 filePath 为空串:只能靠缓存/relay,走到这里说明都失败了,无回退
+    throw new Error('mediaFile filePath 为空且无 file_id 来源(relay 失败,无 S3 回退)');
+  }
   if (!isS3Path(filePath)) {
     return {
       absPath: path.isAbsolute(filePath) ? filePath : path.resolve(UPLOADS_ROOT, filePath),
@@ -99,7 +104,7 @@ async function deleteCachedFileId(botId: number, mediaFileId: number) {
 async function sendPhoto(
   ctx: Context,
   botId: number,
-  mediaFile: { id: number; filePath: string; type: string },
+  mediaFile: { id: number; filePath: string; type: string; sourceChatId?: bigint | null; sourceMessageId?: number | null },
   caption?: string | null,
   keyboard?: InlineKeyboard,
   parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
@@ -117,6 +122,17 @@ async function sendPhoto(
       if (!isFileIdError(err)) throw err;
       console.error(`[sender] file_id 失效，重新上传: mediaFile=${mediaFile.id}`, err.message);
       await deleteCachedFileId(botId, mediaFile.id);
+    }
+  }
+
+  // relay:source 字段齐全且无缓存时,转发抓本 bot file_id
+  if (mediaFile.sourceChatId != null && mediaFile.sourceMessageId != null) {
+    const relayId = await fetchFileIdViaRelay(ctx.api, mediaFile.sourceChatId, mediaFile.sourceMessageId, 'photo');
+    if (relayId) {
+      const msg = await ctx.replyWithPhoto(relayId, opts);
+      const fid = extractFileId(msg, 'photo');
+      if (fid) await saveCachedFileId(botId, mediaFile.id, fid);
+      return msg;
     }
   }
 
@@ -147,7 +163,7 @@ async function sendPhoto(
 async function sendVideo(
   ctx: Context,
   botId: number,
-  mediaFile: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null },
+  mediaFile: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null; sourceChatId?: bigint | null; sourceMessageId?: number | null },
   caption?: string | null,
   keyboard?: InlineKeyboard,
   parseMode?: 'HTML' | 'MarkdownV2' | 'Markdown',
@@ -177,6 +193,21 @@ async function sendVideo(
     } finally {
       // 缩略图只在 cachedId 路径下用了一次,这里清理一次;后续走本地上传会重新 resolve
       if (cachedId && thumbCleanup) { thumbCleanup(); thumbCleanup = null; }
+    }
+  }
+
+  // relay:source 字段齐全且无缓存时,转发抓本 bot file_id
+  if (mediaFile.sourceChatId != null && mediaFile.sourceMessageId != null) {
+    const relayId = await fetchFileIdViaRelay(ctx.api, mediaFile.sourceChatId, mediaFile.sourceMessageId, 'video');
+    if (relayId) {
+      const vopts: any = { supports_streaming: true };
+      if (caption) vopts.caption = caption;
+      if (caption && parseMode) vopts.parse_mode = parseMode;
+      const msg = await ctx.replyWithVideo(relayId, vopts);
+      const fid = extractFileId(msg, 'video');
+      if (fid) await saveCachedFileId(botId, mediaFile.id, fid);
+      if (thumbCleanup) thumbCleanup();
+      return msg;
     }
   }
 
@@ -217,6 +248,7 @@ const MEDIA_GROUP_CHUNK_SIZE = 10;
 type MediaFileLike = {
   id: number; filePath: string; type: string;
   duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null;
+  sourceChatId?: bigint | null; sourceMessageId?: number | null;
 };
 
 /**
@@ -280,17 +312,29 @@ async function sendMediaGroupBatch(
   const cachedIds: (string | null)[] = await Promise.all(
     mediaFiles.map((mf) => getCachedFileId(botId, mf.id)),
   );
+  // 2.5) relay:cache miss + 非 v2 + source 字段齐全 → 逐条转发抓(relay 内部串行)
+  const relayIds: (string | null)[] = await Promise.all(
+    mediaFiles.map((mf, i) => {
+      if (cachedIds[i] || v2Ids[i]) return Promise.resolve(null);
+      if (mf.sourceChatId == null || mf.sourceMessageId == null) return Promise.resolve(null);
+      return fetchFileIdViaRelay(ctx.api, mf.sourceChatId, mf.sourceMessageId, mf.type);
+    }),
+  );
+  // 抓到的 relay file_id 立即缓存(下次直接命中)
+  await Promise.all(
+    mediaFiles.map((mf, i) => (relayIds[i] ? saveCachedFileId(botId, mf.id, relayIds[i]!) : null)),
+  );
   // 2) 只对真正需要上传的(cache miss + 非 v2)mediaFile 拉 S3 / 本地 path
   const resolvedMain = await Promise.all(
     mediaFiles.map((mf, i) =>
-      cachedIds[i] || v2Ids[i] ? Promise.resolve(null) : resolveLocalPath(mf.filePath),
+      cachedIds[i] || v2Ids[i] || relayIds[i] ? Promise.resolve(null) : resolveLocalPath(mf.filePath),
     ),
   );
   // 缩略图同理:cachedId 命中时 Telegram 用缓存里的缩略图,无需我们再传
   const resolvedThumb = await Promise.all(
     mediaFiles.map((mf, i) => {
       if (!mf.thumbnailPath) return Promise.resolve(null);
-      if (cachedIds[i] || v2Ids[i]) return Promise.resolve(null);
+      if (cachedIds[i] || v2Ids[i] || relayIds[i]) return Promise.resolve(null);
       return resolveLocalPath(mf.thumbnailPath);
     }),
   );
@@ -316,6 +360,8 @@ async function sendMediaGroupBatch(
         // v2-placeholder:filePath 即 file_id,直接发
         source = v2Ids[i] as string;
         uploadedFromLocal.add(i);
+      } else if (relayIds[i]) {
+        source = relayIds[i] as string;  // 已单独缓存,不计入 uploadedFromLocal
       } else {
         source = new InputFile(resolvedMain[i]!.absPath);
         uploadedFromLocal.add(i);
@@ -348,7 +394,7 @@ async function sendMediaGroupBatch(
       }
       // 之前缓存命中的 mediaFile 没下载本地 tmp,retry 要全部 resolve
       for (let i = 0; i < mediaFiles.length; i++) {
-        if (v2Ids[i]) continue;
+        if (v2Ids[i] || relayIds[i]) continue;
         if (!resolvedMain[i]) {
           resolvedMain[i] = await resolveLocalPath(mediaFiles[i].filePath);
         }
@@ -357,8 +403,8 @@ async function sendMediaGroupBatch(
         }
       }
       const retryItems = mediaFiles.map((mf, i) => {
-        const src: string | InputFile = v2Ids[i]
-          ? (v2Ids[i] as string)
+        const src: string | InputFile = (v2Ids[i] || relayIds[i])
+          ? ((v2Ids[i] || relayIds[i]) as string)
           : new InputFile(resolvedMain[i]!.absPath);
         const cap = i === 0 ? (caption ?? undefined) : undefined;
         const thumbAbs = resolvedThumb[i]?.absPath ?? null;
@@ -514,7 +560,7 @@ export async function sendResource(
   resource: {
     type: string;
     caption: string | null;
-    mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null }[];
+    mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null; sourceChatId?: bigint | null; sourceMessageId?: number | null }[];
   },
   keyboard?: InlineKeyboard,
   resourceId?: number,
@@ -580,7 +626,7 @@ export async function sendAd(
     resource: {
       type: string;
       caption: string | null;
-      mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null }[];
+      mediaFiles: { id: number; filePath: string; type: string; duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null; sourceChatId?: bigint | null; sourceMessageId?: number | null }[];
     };
   },
   adDisplaySeconds: number,
