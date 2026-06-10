@@ -68,6 +68,7 @@ const S3_MEDIA_PREFIX = 'media/';
 type MediaGroupBufferEntry = {
   resourceGroupId: number;
   botId: number;
+  sourceChatId: bigint;
   caption: string | null;
   // 缓冲期内只存元数据 (file_id + s3Key 等),真正下载 + 上传放到 flush 后的后台任务
   items: { meta: PostMeta; messageId: number }[];
@@ -338,12 +339,14 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
       mediaFiles: {
         create: [{
           type: meta.type,
-          filePath: makeS3Path(meta.s3Key),
+          filePath: '',
           fileName: meta.originalFileName,
           mimeType: meta.mimeType,
           fileSize: meta.fileSize,
           sortOrder: 0,
           uploadError: null,
+          sourceChatId: BigInt(post.chat.id),
+          sourceMessageId: post.message_id,
         }],
       },
     },
@@ -358,11 +361,6 @@ async function persistSingleMedia(ctx: Context, botId: number, groupId: number, 
   await sendAssignmentPrompt(ctx, resource, groupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
   );
-
-  // 后台: tdlight 下载 + S3 上传 + 视频缩略图
-  uploadMediaToS3InBackground(ctx.api, botId, mf.id, {
-    type: meta.type, fileId: meta.fileId, mimeType: meta.mimeType, s3Key: meta.s3Key,
-  }).catch(() => { /* 失败已写 uploadError + 打 log */ });
 }
 
 /* ============== 媒体组缓冲 ============== */
@@ -377,6 +375,7 @@ async function bufferMediaGroupMessage(ctx: Context, botId: number, groupId: num
     entry = {
       resourceGroupId: groupId,
       botId,
+      sourceChatId: BigInt(post.chat.id),
       caption: null,
       items: [],
       timer: null as unknown as NodeJS.Timeout,
@@ -411,12 +410,14 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
       mediaFiles: {
         create: entry.items.map((it, i) => ({
           type: it.meta.type,
-          filePath: makeS3Path(it.meta.s3Key),
+          filePath: '',
           fileName: it.meta.originalFileName,
           mimeType: it.meta.mimeType,
           fileSize: it.meta.fileSize,
           sortOrder: i,
           uploadError: null,
+          sourceChatId: entry.sourceChatId,
+          sourceMessageId: it.messageId,
         })),
       },
     },
@@ -432,15 +433,6 @@ async function flushMediaGroup(entry: MediaGroupBufferEntry) {
   await sendAssignmentPrompt(entry.lastCtx, resource, entry.resourceGroupId).catch((err) =>
     console.error('[channel-collector] sendAssignmentPrompt 失败:', err.message)
   );
-
-  // 后台并发上传所有 mediaFile (semaphore 限并发)
-  for (let i = 0; i < resource.mediaFiles.length; i++) {
-    const mf = resource.mediaFiles[i];
-    const m = entry.items[i].meta;
-    uploadMediaToS3InBackground(entry.lastCtx.api, entry.botId, mf.id, {
-      type: m.type, fileId: m.fileId, mimeType: m.mimeType, s3Key: m.s3Key,
-    }).catch(() => { /* 失败已写 uploadError + 打 log */ });
-  }
 }
 
 /* ============== 反馈消息 + 归属选择键盘 ============== */
