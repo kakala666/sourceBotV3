@@ -3,6 +3,7 @@ import type { Api } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
 import { extractFileId } from './media-fileid';
+import { fetchFileIdViaRelay } from './relay-fileid';
 
 /**
  * ctx-free 资源发送 —— 用于主动推送(notify-resource)等场景,
@@ -17,6 +18,9 @@ const UPLOADS_ROOT = process.env.UPLOAD_DIR
   : path.resolve(process.cwd(), 'uploads');
 
 function getAbsolutePath(filePath: string): string {
+  if (!filePath) {
+    throw new Error('mediaFile filePath 为空且无 file_id 来源(relay 失败,无 S3 回退)');
+  }
   if (path.isAbsolute(filePath)) return filePath;
   return path.resolve(UPLOADS_ROOT, filePath);
 }
@@ -49,6 +53,7 @@ async function deleteCachedFileId(botId: number, mediaFileId: number) {
 type MediaFileLike = {
   id: number; filePath: string; type: string;
   duration?: number | null; width?: number | null; height?: number | null; thumbnailPath?: string | null;
+  sourceChatId?: bigint | null; sourceMessageId?: number | null;
 };
 
 function buildVideoOpts(mf: MediaFileLike, itemCaption?: string): any {
@@ -77,6 +82,15 @@ async function sendPhotoDirect(
       await deleteCachedFileId(botId, mf.id);
     }
   }
+  if (mf.sourceChatId != null && mf.sourceMessageId != null) {
+    const relayId = await fetchFileIdViaRelay(api, mf.sourceChatId, mf.sourceMessageId, 'photo');
+    if (relayId) {
+      const m = await api.sendPhoto(chatId, relayId, opts);
+      const f = extractFileId(m, 'photo');
+      if (f) await saveCachedFileId(botId, mf.id, f);
+      return m;
+    }
+  }
   const msg = await api.sendPhoto(chatId, new InputFile(getAbsolutePath(mf.filePath)), opts);
   const fid = extractFileId(msg, 'photo');
   if (fid) await saveCachedFileId(botId, mf.id, fid);
@@ -94,6 +108,17 @@ async function sendVideoDirect(
     catch (err: any) {
       if (!isFileIdError(err)) throw err;
       await deleteCachedFileId(botId, mf.id);
+    }
+  }
+  if (mf.sourceChatId != null && mf.sourceMessageId != null) {
+    const relayId = await fetchFileIdViaRelay(api, mf.sourceChatId, mf.sourceMessageId, 'video');
+    if (relayId) {
+      const vopts: any = { supports_streaming: true };
+      if (caption) vopts.caption = caption;
+      const m = await api.sendVideo(chatId, relayId, vopts);
+      const f = extractFileId(m, 'video');
+      if (f) await saveCachedFileId(botId, mf.id, f);
+      return m;
     }
   }
   const msg = await api.sendVideo(chatId, new InputFile(getAbsolutePath(mf.filePath)), opts);
@@ -124,7 +149,13 @@ async function sendMediaGroupDirect(
       const cached = await getCachedFileId(botId, mf.id);
       const itemCaption = k === 0 ? (batchCaption ?? undefined) : undefined;
       let source: string | InputFile;
+      let relayId: string | null = null;
+      if (!cached && mf.sourceChatId != null && mf.sourceMessageId != null) {
+        relayId = await fetchFileIdViaRelay(api, mf.sourceChatId, mf.sourceMessageId, mf.type);
+        if (relayId) await saveCachedFileId(botId, mf.id, relayId);
+      }
       if (cached) source = cached;
+      else if (relayId) source = relayId;
       else {
         source = new InputFile(getAbsolutePath(mf.filePath));
         uploadedFromLocal.add(k);
