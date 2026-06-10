@@ -57,6 +57,7 @@ export async function fetchFileIdViaRelay(
       try {
         const fwd: any = await api.forwardMessage(
           relayGroupId,
+          // Telegram channel/chat id 远小于 2^53,BigInt→Number 无精度损失
           Number(sourceChatId),
           sourceMessageId,
         );

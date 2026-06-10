@@ -209,6 +209,7 @@ export class ResourceService {
 
     const mediaFiles = await prisma.mediaFile.findMany({ where: { resourceId: id } });
     for (const mf of mediaFiles) {
+      if (!mf.filePath) continue; // 频道即存储的新资源无本地/S3 文件,无需删盘
       // 删主文件
       try {
         if (isS3Path(mf.filePath)) {

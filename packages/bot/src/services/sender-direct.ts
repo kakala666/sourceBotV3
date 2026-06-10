@@ -173,8 +173,16 @@ async function sendMediaGroupDirect(
     } catch (err: any) {
       if (!isFileIdError(err)) throw err;
       for (const mf of chunk) await deleteCachedFileId(botId, mf.id);
+      const retryRelay: (string | null)[] = await Promise.all(
+        chunk.map((mf) =>
+          mf.sourceChatId != null && mf.sourceMessageId != null
+            ? fetchFileIdViaRelay(api, mf.sourceChatId, mf.sourceMessageId, mf.type)
+            : Promise.resolve(null),
+        ),
+      );
+      await Promise.all(chunk.map((mf, k) => (retryRelay[k] ? saveCachedFileId(botId, mf.id, retryRelay[k]!) : null)));
       const retry = chunk.map((mf, k) => {
-        const src = new InputFile(getAbsolutePath(mf.filePath));
+        const src: string | InputFile = retryRelay[k] ?? new InputFile(getAbsolutePath(mf.filePath));
         const cap = k === 0 ? (batchCaption ?? undefined) : undefined;
         return mf.type === 'video'
           ? InputMediaBuilder.video(src, buildVideoOpts(mf, cap))

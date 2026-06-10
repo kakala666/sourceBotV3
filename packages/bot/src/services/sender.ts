@@ -392,9 +392,20 @@ async function sendMediaGroupBatch(
       for (const mf of mediaFiles) {
         await deleteCachedFileId(botId, mf.id);
       }
+      // 缓存已清:新资源(filePath 空 / 有 source 字段)需重新 relay 抓,否则下面 resolveLocalPath('') 会抛
+      const retryRelayIds: (string | null)[] = await Promise.all(
+        mediaFiles.map((mf, i) => {
+          if (v2Ids[i]) return Promise.resolve(null);
+          if (mf.sourceChatId == null || mf.sourceMessageId == null) return Promise.resolve(null);
+          return fetchFileIdViaRelay(ctx.api, mf.sourceChatId, mf.sourceMessageId, mf.type);
+        }),
+      );
+      await Promise.all(
+        mediaFiles.map((mf, i) => (retryRelayIds[i] ? saveCachedFileId(botId, mf.id, retryRelayIds[i]!) : null)),
+      );
       // 之前缓存命中的 mediaFile 没下载本地 tmp,retry 要全部 resolve
       for (let i = 0; i < mediaFiles.length; i++) {
-        if (v2Ids[i] || relayIds[i]) continue;
+        if (v2Ids[i] || retryRelayIds[i]) continue;
         if (!resolvedMain[i]) {
           resolvedMain[i] = await resolveLocalPath(mediaFiles[i].filePath);
         }
@@ -403,8 +414,8 @@ async function sendMediaGroupBatch(
         }
       }
       const retryItems = mediaFiles.map((mf, i) => {
-        const src: string | InputFile = (v2Ids[i] || relayIds[i])
-          ? ((v2Ids[i] || relayIds[i]) as string)
+        const src: string | InputFile = (v2Ids[i] || retryRelayIds[i])
+          ? ((v2Ids[i] || retryRelayIds[i]) as string)
           : new InputFile(resolvedMain[i]!.absPath);
         const cap = i === 0 ? (caption ?? undefined) : undefined;
         const thumbAbs = resolvedThumb[i]?.absPath ?? null;
