@@ -67,18 +67,28 @@ ON CONFLICT(key) DO UPDATE SET value = EXCLUDED.value;
   sourceMessageId Int?
 ```
 
-- [ ] **Step 2: 应用到数据库 + 重新生成 client**
+- [ ] **Step 2: 本机只生成 Prisma Client 类型(不连库)**
+
+> ⚠️ 约定:本机不操作数据库。`prisma generate` 只读 schema 生成 TS 类型、不连库,可在本机跑;`prisma db push`(真正改库)**留到服务器执行,见 Step 4**。
 
 Run:
 ```bash
-cd packages/server && npx prisma db push && npx prisma generate
+cd packages/server && npx prisma generate
 ```
-Expected: `Your database is now in sync with your Prisma schema.` + `Generated Prisma Client`。
+Expected: `Generated Prisma Client`。
 
 - [ ] **Step 3: 确认类型已生成**
 
 Run: `grep -n "sourceMessageId" packages/server/node_modules/.prisma/client/index.d.ts | head -1`
 Expected: 有匹配输出(字段进了生成的类型)。
+
+- [ ] **Step 4: (服务器执行,非本机)应用到数据库**
+
+部署到服务器后,在服务器上跑:
+```bash
+npx prisma db push --schema=packages/server/prisma/schema.prisma
+```
+本机不执行此步;计划其余任务的 `tsc`/单元测试不依赖真实库,只依赖 Step 2 生成的类型。
 
 - [ ] **Step 4: Commit**
 
