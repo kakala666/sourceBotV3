@@ -10,3 +10,8 @@ uploads/*
 # 本地参考资料与调试截图
 contents_with_data.png
 提问的智慧.md
+
+# 误操作残留的嵌套副本 / 多余文件(非项目结构)
+packages/bot/.gitignore
+packages/bot/docs/
+packages/bot/packages/
