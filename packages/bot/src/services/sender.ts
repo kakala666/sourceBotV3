@@ -18,6 +18,7 @@ import prisma from '../prisma';
 import path from 'path';
 import { isS3Path, parseS3Key, downloadToTmp, cleanupTmp } from './storage';
 import { getBotUsername } from './bot-meta';
+import { extractFileId } from './media-fileid';
 
 /** 上传文件的根目录，优先使用环境变量，否则从 cwd 推断 */
 const UPLOADS_ROOT = process.env.UPLOAD_DIR
@@ -91,22 +92,6 @@ async function deleteCachedFileId(botId: number, mediaFileId: number) {
   });
 }
 
-/**
- * 从 Telegram 返回的消息中提取 file_id
- */
-function extractFileId(message: any, mediaType: string): string | null {
-  if (mediaType === 'photo' && message.photo?.length) {
-    // photo 是数组，取最大尺寸的（最后一个）
-    return message.photo[message.photo.length - 1].file_id;
-  }
-  if (mediaType === 'video' && message.video) {
-    return message.video.file_id;
-  }
-  if (message.document) {
-    return message.document.file_id;
-  }
-  return null;
-}
 
 /**
  * 发送单张图片（带 file_id 缓存）

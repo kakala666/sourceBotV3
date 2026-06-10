@@ -2,6 +2,7 @@ import { InputFile, InputMediaBuilder } from 'grammy';
 import type { Api } from 'grammy';
 import prisma from '../prisma';
 import path from 'path';
+import { extractFileId } from './media-fileid';
 
 /**
  * ctx-free 资源发送 —— 用于主动推送(notify-resource)等场景,
@@ -44,14 +45,6 @@ async function deleteCachedFileId(botId: number, mediaFileId: number) {
   await prisma.botFileId.deleteMany({ where: { botId, mediaFileId } });
 }
 
-function extractFileId(message: any, mediaType: string): string | null {
-  if (mediaType === 'photo' && message.photo?.length) {
-    return message.photo[message.photo.length - 1].file_id;
-  }
-  if (mediaType === 'video' && message.video) return message.video.file_id;
-  if (message.document) return message.document.file_id;
-  return null;
-}
 
 type MediaFileLike = {
   id: number; filePath: string; type: string;
