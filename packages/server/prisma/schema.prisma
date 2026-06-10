@@ -175,6 +175,11 @@ model MediaFile {
   // 频道入库时:filePath 预占位为 's3:...' 后台异步上传 Wasabi。
   // 成功时 null;失败时记录错误信息以便后台"上传异常列表"页面查看 + 重试。
   uploadError   String?
+  // 频道即存储:该 media 在来源采集频道里的位置快照(转发抓 file_id 用)。
+  // 两字段都非空 = 可走 relay 转发路径;否则走老 S3 路径。
+  // 快照存这里而非靠 group 关联,因资源可被重新归类到别的 group。
+  sourceChatId    BigInt?
+  sourceMessageId Int?
   createdAt     DateTime @default(now())
 
   resource   Resource    @relation(fields: [resourceId], references: [id], onDelete: Cascade)
